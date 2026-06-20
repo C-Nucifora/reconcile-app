@@ -45,7 +45,7 @@ describe("computeExpenseShares", () => {
     expect(Math.max(...vals) - Math.min(...vals)).toBeLessThanOrEqual(1);
   });
 
-  it("uses raw values for an exact split", () => {
+  it("uses raw values for an exact split that already sums to the total", () => {
     const e = expense({
       amountCents: 1000,
       payerId: "A",
@@ -58,6 +58,55 @@ describe("computeExpenseShares", () => {
     const shares = computeExpenseShares(e);
     expect(shares.get("A")).toBe(700);
     expect(shares.get("B")).toBe(300);
+  });
+
+  it("reconciles an exact split whose values undershoot the total", () => {
+    const e = expense({
+      amountCents: 1000,
+      payerId: "A",
+      splitType: "exact",
+      members: [
+        { personId: "A", value: 300 },
+        { personId: "B", value: 300 },
+      ],
+    });
+    const shares = computeExpenseShares(e);
+    expect([...shares.values()].reduce((a, b) => a + b, 0)).toBe(1000);
+  });
+
+  it("reconciles an exact split whose values overshoot the total", () => {
+    const e = expense({
+      amountCents: 1000,
+      payerId: "A",
+      splitType: "exact",
+      members: [
+        { personId: "A", value: 800 },
+        { personId: "B", value: 800 },
+      ],
+    });
+    const shares = computeExpenseShares(e);
+    const total = [...shares.values()].reduce((a, b) => a + b, 0);
+    expect(total).toBe(1000);
+    expect((shares.get("A") ?? 0) >= 0).toBe(true);
+    expect((shares.get("B") ?? 0) >= 0).toBe(true);
+  });
+
+  it("reconciles fractional exact values to the exact total", () => {
+    // 500.7 and 500.3 truncate to 500/500 = 1000, but amount is 1001.
+    const e = expense({
+      amountCents: 1001,
+      payerId: "A",
+      splitType: "exact",
+      members: [
+        { personId: "A", value: 500.7 },
+        { personId: "B", value: 500.3 },
+      ],
+    });
+    const shares = computeExpenseShares(e);
+    expect([...shares.values()].reduce((a, b) => a + b, 0)).toBe(1001);
+    // The extra cent goes to the larger fractional remainder (A: .7 > B: .3).
+    expect(shares.get("A")).toBe(501);
+    expect(shares.get("B")).toBe(500);
   });
 
   it("splits a percent expense", () => {
@@ -220,6 +269,34 @@ describe("computeBalances", () => {
     };
     const balances = computeBalances(group);
     expect(balances.size).toBe(4);
+    const total = [...balances.values()].reduce((a, b) => a + b, 0);
+    expect(total).toBe(0);
+  });
+
+  it("nets to zero even when an exact split does not sum to the total", () => {
+    const group: Group = {
+      id: "g",
+      name: "g",
+      people: [
+        { id: "A", name: "A" },
+        { id: "B", name: "B" },
+      ],
+      expenses: [
+        {
+          id: "e1",
+          description: "broken exact",
+          amountCents: 1000,
+          payerId: "A",
+          date: "2026-01-01",
+          splitType: "exact",
+          members: [
+            { personId: "A", value: 300 },
+            { personId: "B", value: 300 },
+          ],
+        },
+      ],
+    };
+    const balances = computeBalances(group);
     const total = [...balances.values()].reduce((a, b) => a + b, 0);
     expect(total).toBe(0);
   });

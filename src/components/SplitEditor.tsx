@@ -130,11 +130,9 @@ export default function SplitEditor({
 
   function setSplitType(next: SplitType) {
     if (next === splitType) return;
-    // Reset member values appropriately when switching types.
-    const nextMembers: SplitMember[] = members.map((m) => ({
-      personId: m.personId,
-      value: defaultValueFor(next),
-    }));
+    // Pre-fill an even distribution so the freshly-switched split starts valid
+    // instead of forcing the user to re-type every value from scratch.
+    const nextMembers = distributeEvenly(next, amountCents, members);
     onChange({ splitType: next, members: nextMembers });
   }
 
@@ -304,4 +302,34 @@ function defaultValueFor(splitType: SplitType): number {
     default:
       return 0;
   }
+}
+
+/**
+ * Produce member values for a freshly-switched split type that start out valid:
+ *  - equal:   values ignored, set to 0.
+ *  - shares:  one share each.
+ *  - percent: percentage points summing to exactly 100 (largest-remainder).
+ *  - exact:   cents summing to exactly amountCents (largest-remainder).
+ */
+function distributeEvenly(
+  next: SplitType,
+  amountCents: number,
+  members: SplitMember[],
+): SplitMember[] {
+  const n = members.length;
+  if (n === 0) return [];
+
+  if (next === "shares") {
+    return members.map((m) => ({ personId: m.personId, value: 1 }));
+  }
+  if (next === "percent") {
+    const parts = splitCents(100, members.map(() => 1));
+    return members.map((m, i) => ({ personId: m.personId, value: parts[i] }));
+  }
+  if (next === "exact") {
+    const parts = splitCents(amountCents, members.map(() => 1));
+    return members.map((m, i) => ({ personId: m.personId, value: parts[i] }));
+  }
+  // equal: values are ignored.
+  return members.map((m) => ({ personId: m.personId, value: 0 }));
 }

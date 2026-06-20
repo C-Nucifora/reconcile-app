@@ -1,7 +1,33 @@
-import type { AppState, Group, Person } from "../types";
+import type { AppState, Expense, Group, Person } from "../types";
 import type { Action } from "./actions";
 import { newId } from "../lib/id";
-import { emptyState } from "./storage";
+import { emptyState, sanitizeState } from "./storage";
+
+/**
+ * Remove a person from a single expense.
+ *
+ * - If they were the only payer, the expense can no longer be attributed and is
+ *   dropped.
+ * - Otherwise they are removed from the member list. For an exact split the
+ *   removed member's cents are not redistributed (the amount/members no longer
+ *   match by design); the engine reconciles the remaining members back to the
+ *   total. Percent/shares/equal keep their remaining weights and are re-split by
+ *   the engine.
+ *
+ * Returns the cleaned expense, or null when it should be dropped entirely.
+ */
+function removePersonFromExpense(
+  expense: Expense,
+  personId: string,
+): Expense | null {
+  if (expense.payerId === personId) return null;
+
+  const members = expense.members.filter((m) => m.personId !== personId);
+  if (members.length === 0) return null;
+  if (members.length === expense.members.length) return expense;
+
+  return { ...expense, members };
+}
 
 function updateGroup(
   state: AppState,
@@ -71,6 +97,11 @@ export function reducer(state: AppState, action: Action): AppState {
       return updateGroup(state, action.groupId, (g) => ({
         ...g,
         people: g.people.filter((p) => p.id !== action.personId),
+        // Purge the person from every expense so they can never reappear as a
+        // ghost row in Balances or an "Unknown" party in Settle.
+        expenses: g.expenses
+          .map((e) => removePersonFromExpense(e, action.personId))
+          .filter((e): e is Expense => e !== null),
       }));
     }
 
@@ -98,7 +129,8 @@ export function reducer(state: AppState, action: Action): AppState {
     }
 
     case "IMPORT_STATE": {
-      return action.state;
+      // Never trust imported data; sanitize it so the engine's invariants hold.
+      return sanitizeState(action.state);
     }
 
     case "RESET": {

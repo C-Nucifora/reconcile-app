@@ -31,11 +31,22 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
     editingExpense?.payerId ?? people[0]?.id ?? "",
   );
   const [date, setDate] = useState(editingExpense?.date ?? today());
+
+  const peopleIds = useMemo(
+    () => new Set(people.map((p) => p.id)),
+    [people],
+  );
+
   const [split, setSplit] = useState<SplitEditorValue>(() => {
     if (editingExpense) {
+      // Drop members referencing a person who has since been removed; an
+      // orphaned member is invisible in the editor but would otherwise be
+      // re-validated and persisted on save.
       return {
         splitType: editingExpense.splitType,
-        members: editingExpense.members.map((m) => ({ ...m })),
+        members: editingExpense.members
+          .filter((m) => peopleIds.has(m.personId))
+          .map((m) => ({ ...m })),
       };
     }
     return {
@@ -43,6 +54,12 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
       members: people.map((p): SplitMember => ({ personId: p.id, value: 0 })),
     };
   });
+
+  // Whether the expense being edited referenced people no longer in the group.
+  const hadOrphanMembers = useMemo(() => {
+    if (!editingExpense) return false;
+    return editingExpense.members.some((m) => !peopleIds.has(m.personId));
+  }, [editingExpense, peopleIds]);
 
   const amountCents = useMemo(
     () => parseAmountToCents(amountInput),
@@ -60,6 +77,7 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
     amountCents !== null &&
     amountCents > 0 &&
     Boolean(payerId) &&
+    date.trim() !== "" &&
     split.members.length > 0 &&
     splitValid;
 
@@ -187,7 +205,13 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
           <input
             type="date"
             value={date}
+            max={today()}
             onChange={(e) => setDate(e.target.value)}
+            onBlur={(e) => {
+              // A native date input can be cleared to ""; fall back to today so
+              // list ordering and rendered metadata never show a blank date.
+              if (e.target.value.trim() === "") setDate(today());
+            }}
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-400"
           />
         </div>
@@ -197,6 +221,12 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
         <label className="block text-sm font-medium text-slate-700">
           Split between
         </label>
+        {hadOrphanMembers && (
+          <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700">
+            A person who was previously included in this expense has been
+            removed from the group. Re-check the split below before saving.
+          </p>
+        )}
         <SplitEditor
           amountCents={amountCents ?? 0}
           people={people}

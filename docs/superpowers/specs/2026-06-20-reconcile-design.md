@@ -34,7 +34,7 @@ minimizes the number of real-world transfers required to square everyone up.
 
 ## 3. Tech Stack
 
-- **React 18 + TypeScript**, bundled with **Vite**.
+- **React 19 + TypeScript**, bundled with **Vite**.
 - **Tailwind CSS** for styling.
 - **Vitest** for unit tests (engine is TDD).
 - State managed with React `useReducer` + Context (no external state library needed).
