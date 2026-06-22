@@ -15,6 +15,9 @@ export default function PeopleManager() {
     for (const expense of activeGroup.expenses) {
       ids.add(expense.payerId);
       for (const m of expense.members) ids.add(m.personId);
+      for (const item of expense.items ?? []) {
+        for (const id of item.assigneeIds) ids.add(id);
+      }
     }
     return ids;
   }, [activeGroup]);

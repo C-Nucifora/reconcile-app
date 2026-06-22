@@ -21,6 +21,7 @@ interface ReceiptUploadProps {
  */
 export default function ReceiptUpload({ imageId, onChange }: ReceiptUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +57,18 @@ export default function ReceiptUpload({ imageId, onChange }: ReceiptUploadProps)
   useEffect(() => {
     if (!thumbUrl) setLightboxOpen(false);
   }, [thumbUrl]);
+
+  // Close the lightbox on Escape for keyboard users (parity with ReceiptViewer),
+  // and move focus to the close button on open so keyboard users land inside it.
+  useEffect(() => {
+    if (!lightboxOpen) return;
+    closeButtonRef.current?.focus();
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setLightboxOpen(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lightboxOpen]);
 
   async function handleSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -183,6 +196,7 @@ export default function ReceiptUpload({ imageId, onChange }: ReceiptUploadProps)
               className="max-h-[85vh] max-w-[90vw] rounded-lg object-contain shadow-sm"
             />
             <button
+              ref={closeButtonRef}
               type="button"
               onClick={() => setLightboxOpen(false)}
               aria-label="Close"

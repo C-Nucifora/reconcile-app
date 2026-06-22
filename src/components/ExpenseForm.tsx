@@ -253,26 +253,31 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
           {isEditing ? "Edit expense" : "Add an expense"}
         </h3>
 
-        <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-muted">
-          <span>Itemize</span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={itemized}
-            onClick={() => setItemized((v) => !v)}
-            className={
-              "relative inline-flex h-5 w-9 items-center rounded-full transition " +
-              (itemized ? "bg-accent" : "bg-surface-2 border border-line")
-            }
-          >
-            <span
+        <div className="flex flex-col items-end gap-1">
+          <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-muted">
+            <span>Itemize</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={itemized}
+              onClick={() => setItemized((v) => !v)}
               className={
-                "inline-block h-3.5 w-3.5 transform rounded-full bg-surface shadow-sm transition " +
-                (itemized ? "translate-x-4" : "translate-x-1")
+                "relative inline-flex h-5 w-9 items-center rounded-full transition " +
+                (itemized ? "bg-accent" : "bg-surface-2 border border-line")
               }
-            />
-          </button>
-        </label>
+            >
+              <span
+                className={
+                  "inline-block h-3.5 w-3.5 transform rounded-full bg-surface shadow-sm transition " +
+                  (itemized ? "translate-x-4" : "translate-x-1")
+                }
+              />
+            </button>
+          </label>
+          <p className="text-right text-xs text-muted">
+            Switching keeps your entries; only the active mode is saved.
+          </p>
+        </div>
       </div>
 
       <div className="space-y-1">
