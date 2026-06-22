@@ -1,5 +1,7 @@
 # Reconcile
 
+[![CI](https://github.com/C-Nucifora/reconcile-app/actions/workflows/ci.yml/badge.svg)](https://github.com/C-Nucifora/reconcile-app/actions/workflows/ci.yml)
+
 A local-first web app for figuring out **who owes whom** after a group shares costs.
 
 Enter expenses (who paid, how much, how it splits) and Reconcile computes each person's
@@ -46,8 +48,17 @@ Then open the printed `localhost` URL in your browser.
 | `npm run dev` | Start the Vite dev server with hot reload. |
 | `npm run build` | Type-check (`tsc --noEmit`) and produce a production build in `dist/`. |
 | `npm run preview` | Serve the production build locally. |
+| `npm run lint` | Lint with ESLint (TypeScript + React Hooks rules). |
+| `npm run typecheck` | Type-check without emitting (`tsc --noEmit`). |
 | `npm run test` | Run the unit test suite once. |
 | `npm run test:watch` | Run tests in watch mode. |
+| `npm run test:coverage` | Run tests and produce a coverage report in `coverage/`. |
+
+## Continuous integration
+
+Every push and pull request to `main` runs the [CI workflow](.github/workflows/ci.yml) on a
+Node 20 / 22 / 24 matrix: **lint → type-check → test (with coverage) → build**. All four must
+pass for the run to go green.
 
 ## How it works
 
