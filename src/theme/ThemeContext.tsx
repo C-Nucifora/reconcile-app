@@ -86,8 +86,8 @@ export function ThemeProvider(props: {
     const onChange = (event: MediaQueryListEvent) => {
       setPrefersDark(event.matches);
     };
-    // Sync immediately in case it changed before subscribing.
-    setPrefersDark(mql.matches);
+    // Initial value is read lazily in useState above; the listener keeps it in
+    // sync from here on.
     mql.addEventListener("change", onChange);
     return () => mql.removeEventListener("change", onChange);
   }, []);

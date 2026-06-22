@@ -28,23 +28,21 @@ export default function ReceiptUpload({ imageId, onChange }: ReceiptUploadProps)
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
   // Resolve an object URL for the current image id and revoke it on change /
-  // unmount so blobs are not leaked.
+  // unmount so blobs are not leaked. State is only updated inside the async
+  // callback (never synchronously in the effect body); if the image is gone the
+  // lightbox is closed there too.
   useEffect(() => {
     let cancelled = false;
     let url: string | null = null;
 
-    if (!imageId) {
-      setThumbUrl(null);
-      return;
-    }
-
-    getImageURL(imageId).then((resolved) => {
+    Promise.resolve(imageId ? getImageURL(imageId) : null).then((resolved) => {
       if (cancelled) {
         if (resolved) URL.revokeObjectURL(resolved);
         return;
       }
       url = resolved;
       setThumbUrl(resolved);
+      if (!resolved) setLightboxOpen(false);
     });
 
     return () => {
@@ -52,11 +50,6 @@ export default function ReceiptUpload({ imageId, onChange }: ReceiptUploadProps)
       if (url) URL.revokeObjectURL(url);
     };
   }, [imageId]);
-
-  // Close the lightbox if the underlying image goes away.
-  useEffect(() => {
-    if (!thumbUrl) setLightboxOpen(false);
-  }, [thumbUrl]);
 
   // Close the lightbox on Escape for keyboard users (parity with ReceiptViewer),
   // and move focus to the close button on open so keyboard users land inside it.
@@ -96,6 +89,7 @@ export default function ReceiptUpload({ imageId, onChange }: ReceiptUploadProps)
   function handleRemove() {
     if (imageId) void deleteImage(imageId);
     setError(null);
+    setLightboxOpen(false);
     onChange(undefined);
   }
 
