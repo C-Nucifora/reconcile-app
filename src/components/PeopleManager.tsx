@@ -21,8 +21,8 @@ export default function PeopleManager() {
 
   if (!activeGroup) {
     return (
-      <div className="rounded-xl border border-slate-200 bg-white p-6 text-center">
-        <p className="text-sm text-slate-500">
+      <div className="rounded-xl border border-line bg-surface p-6 text-center shadow-sm">
+        <p className="text-sm text-muted">
           Create or select a group to start adding people.
         </p>
       </div>
@@ -71,10 +71,12 @@ export default function PeopleManager() {
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-6">
+    <div className="rounded-xl border border-line bg-surface p-6 shadow-sm">
       <div className="mb-4 flex items-baseline justify-between gap-3">
-        <h2 className="text-lg font-semibold text-slate-900">People</h2>
-        <span className="text-xs text-slate-400">
+        <h2 className="text-xs font-medium uppercase tracking-wide text-muted">
+          People
+        </h2>
+        <span className="text-xs tabular-nums text-muted">
           {people.length} {people.length === 1 ? "person" : "people"}
         </span>
       </div>
@@ -92,20 +94,20 @@ export default function PeopleManager() {
           onChange={(e) => setNewName(e.target.value)}
           placeholder="Add a person by name"
           aria-label="Person name"
-          className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+          className="min-w-0 flex-1 rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent"
         />
         <button
           type="submit"
           disabled={!newName.trim()}
-          className="shrink-0 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+          className="shrink-0 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Add
         </button>
       </form>
 
       {people.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center">
-          <p className="text-sm text-slate-500">
+        <div className="rounded-lg border border-dashed border-line bg-surface-2 px-4 py-8 text-center">
+          <p className="text-sm text-muted">
             No people yet. Add someone above to get started.
           </p>
         </div>
@@ -116,7 +118,7 @@ export default function PeopleManager() {
             return (
               <li key={person.id}>
                 {isEditing ? (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white py-1 pl-2 pr-1">
+                  <span className="inline-flex items-center gap-1 rounded-full border border-line bg-surface py-1 pl-2 pr-1">
                     <input
                       type="text"
                       value={editName}
@@ -133,14 +135,14 @@ export default function PeopleManager() {
                         }
                       }}
                       onBlur={() => commitEditing(person)}
-                      className="w-28 min-w-0 bg-transparent px-1 text-sm text-slate-900 focus:outline-none"
+                      className="w-28 min-w-0 bg-transparent px-1 text-sm text-fg focus:outline-none"
                     />
                     <button
                       type="button"
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => commitEditing(person)}
                       aria-label="Save name"
-                      className="rounded-full p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                      className="rounded-full p-1 text-muted transition hover:bg-surface-2 hover:text-fg"
                     >
                       <svg
                         viewBox="0 0 20 20"
@@ -159,12 +161,12 @@ export default function PeopleManager() {
                     </button>
                   </span>
                 ) : (
-                  <span className="group inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 py-1 pl-3 pr-1 text-sm text-slate-700">
+                  <span className="group inline-flex items-center gap-1 rounded-full border border-line bg-surface-2 py-1 pl-3 pr-1 text-sm text-fg">
                     <button
                       type="button"
                       onClick={() => startEditing(person)}
                       title="Rename"
-                      className="max-w-[12rem] truncate font-medium text-slate-700 transition hover:text-slate-900"
+                      className="max-w-[12rem] truncate font-medium text-fg transition hover:text-accent"
                     >
                       {person.name}
                     </button>
@@ -173,7 +175,7 @@ export default function PeopleManager() {
                       onClick={() => handleRemove(person)}
                       aria-label={`Remove ${person.name}`}
                       title={`Remove ${person.name}`}
-                      className="rounded-full p-1 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+                      className="rounded-full p-1 text-muted transition hover:bg-negative-soft hover:text-negative"
                     >
                       <svg
                         viewBox="0 0 20 20"

@@ -170,7 +170,7 @@ export default function SplitEditor({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-2">
+      <div className="inline-flex flex-wrap gap-1 rounded-lg border border-line bg-surface-2 p-1">
         {SPLIT_TYPES.map(({ type, label }) => {
           const active = type === splitType;
           return (
@@ -181,8 +181,8 @@ export default function SplitEditor({
               className={
                 "rounded-md px-3 py-1.5 text-sm font-medium transition " +
                 (active
-                  ? "bg-slate-900 text-white"
-                  : "bg-slate-100 text-slate-700 hover:bg-slate-200")
+                  ? "bg-accent text-accent-fg"
+                  : "text-muted hover:bg-surface-2")
               }
             >
               {label}
@@ -191,7 +191,7 @@ export default function SplitEditor({
         })}
       </div>
 
-      <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
+      <ul className="divide-y divide-line rounded-lg border border-line">
         {people.map((person) => {
           const included = includedIds.has(person.id);
           const member = members.find((m) => m.personId === person.id);
@@ -206,12 +206,11 @@ export default function SplitEditor({
                   type="checkbox"
                   checked={included}
                   onChange={() => toggleMember(person.id)}
-                  className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
+                  className="h-4 w-4 rounded border-line text-accent focus:ring-accent"
                 />
                 <span
                   className={
-                    "text-sm " +
-                    (included ? "text-slate-900" : "text-slate-400")
+                    "text-sm " + (included ? "text-fg" : "text-muted")
                   }
                 >
                   {person.name}
@@ -220,7 +219,7 @@ export default function SplitEditor({
 
               {included && splitType === "exact" && (
                 <div className="flex items-center gap-1">
-                  <span className="text-xs text-slate-400">$</span>
+                  <span className="text-xs text-muted">$</span>
                   <input
                     type="number"
                     step="0.01"
@@ -230,7 +229,7 @@ export default function SplitEditor({
                     onChange={(e) =>
                       setMemberValue(person.id, e.target.value, true)
                     }
-                    className="w-24 rounded-md border border-slate-300 px-2 py-1 text-right text-sm focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-400"
+                    className="w-24 rounded-lg border border-line bg-surface px-2 py-1 text-right text-sm tabular-nums text-fg focus:outline-none focus:ring-2 focus:ring-accent"
                   />
                 </div>
               )}
@@ -247,9 +246,9 @@ export default function SplitEditor({
                     onChange={(e) =>
                       setMemberValue(person.id, e.target.value, false)
                     }
-                    className="w-20 rounded-md border border-slate-300 px-2 py-1 text-right text-sm focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-400"
+                    className="w-20 rounded-lg border border-line bg-surface px-2 py-1 text-right text-sm tabular-nums text-fg focus:outline-none focus:ring-2 focus:ring-accent"
                   />
-                  <span className="text-xs text-slate-400">%</span>
+                  <span className="text-xs text-muted">%</span>
                 </div>
               )}
 
@@ -264,14 +263,14 @@ export default function SplitEditor({
                     onChange={(e) =>
                       setMemberValue(person.id, e.target.value, false)
                     }
-                    className="w-20 rounded-md border border-slate-300 px-2 py-1 text-right text-sm focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-400"
+                    className="w-20 rounded-lg border border-line bg-surface px-2 py-1 text-right text-sm tabular-nums text-fg focus:outline-none focus:ring-2 focus:ring-accent"
                   />
-                  <span className="text-xs text-slate-400">sh</span>
+                  <span className="text-xs text-muted">sh</span>
                 </div>
               )}
 
               {included && (
-                <span className="w-20 text-right text-sm font-medium tabular-nums text-slate-700">
+                <span className="w-20 text-right text-sm font-medium tabular-nums text-fg">
                   {formatCents(share)}
                 </span>
               )}
@@ -282,7 +281,7 @@ export default function SplitEditor({
 
       <p
         className={
-          "text-xs " + (validation.ok ? "text-emerald-600" : "text-rose-600")
+          "text-xs " + (validation.ok ? "text-positive" : "text-negative")
         }
       >
         {validation.message}

@@ -26,15 +26,15 @@ export function SettlePanel() {
     activeGroup.expenses.length > 0;
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <h2 className="text-lg font-semibold text-slate-900">Settle up</h2>
+    <section className="rounded-xl border border-line bg-surface p-5 shadow-sm">
+      <h2 className="text-lg font-semibold text-fg">Settle up</h2>
 
       {!hasData ? (
-        <p className="mt-3 text-sm text-slate-500">
+        <p className="mt-3 text-sm text-muted">
           Add people and expenses to get a settlement plan.
         </p>
       ) : transfers.length === 0 ? (
-        <div className="mt-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+        <div className="mt-4 rounded-lg bg-positive-soft px-4 py-3 text-sm font-semibold text-positive">
           All settled up!
         </div>
       ) : (
@@ -42,18 +42,18 @@ export function SettlePanel() {
           {transfers.map((transfer, index) => (
             <li
               key={`${transfer.fromId}-${transfer.toId}-${index}`}
-              className="flex items-center justify-between gap-4 rounded-lg bg-slate-50 px-4 py-2.5 text-sm"
+              className="flex items-center justify-between gap-4 rounded-lg bg-surface-2 px-4 py-2.5 text-sm"
             >
-              <span className="text-slate-700">
-                <span className="font-medium text-slate-900">
+              <span className="text-muted">
+                <span className="font-medium text-fg">
                   {nameOf.get(transfer.fromId) ?? "Unknown"}
                 </span>{" "}
                 pays{" "}
-                <span className="font-medium text-slate-900">
+                <span className="font-medium text-fg">
                   {nameOf.get(transfer.toId) ?? "Unknown"}
                 </span>
               </span>
-              <span className="font-semibold text-slate-900">
+              <span className="font-semibold tabular-nums text-fg">
                 {formatCents(transfer.amountCents)}
               </span>
             </li>
