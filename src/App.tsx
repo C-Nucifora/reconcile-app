@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { AppProvider, useApp } from "./state/AppContext";
 import GroupSwitcher from "./components/GroupSwitcher";
 import PeopleManager from "./components/PeopleManager";
@@ -6,9 +7,13 @@ import ExpenseList from "./components/ExpenseList";
 import { BalancesPanel } from "./components/BalancesPanel";
 import { SettlePanel } from "./components/SettlePanel";
 import ThemeToggle from "./components/ThemeToggle";
+import ExportModal from "./components/ExportModal";
 
 function Workspace() {
   const { activeGroup } = useApp();
+  const [exportOpen, setExportOpen] = useState(false);
+
+  const canExport = !!activeGroup && activeGroup.people.length > 0;
 
   return (
     <div className="min-h-screen bg-bg text-fg">
@@ -22,7 +27,17 @@ function Workspace() {
               Track shared expenses and settle up with the fewest payments.
             </p>
           </div>
-          <ThemeToggle />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setExportOpen(true)}
+              disabled={!canExport}
+              className="rounded-lg border border-line bg-surface px-3 py-2 text-sm font-medium text-fg transition hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Export PDF
+            </button>
+            <ThemeToggle />
+          </div>
         </header>
 
         <div className="mt-8">
@@ -43,6 +58,10 @@ function Workspace() {
           </div>
         ) : null}
       </div>
+
+      {exportOpen && activeGroup && (
+        <ExportModal group={activeGroup} onClose={() => setExportOpen(false)} />
+      )}
     </div>
   );
 }
