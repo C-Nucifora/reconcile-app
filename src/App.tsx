@@ -5,30 +5,32 @@ import ExpenseForm from "./components/ExpenseForm";
 import ExpenseList from "./components/ExpenseList";
 import { BalancesPanel } from "./components/BalancesPanel";
 import { SettlePanel } from "./components/SettlePanel";
+import ThemeToggle from "./components/ThemeToggle";
 
 function Workspace() {
   const { activeGroup } = useApp();
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-            Reconcile
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Track shared expenses and settle up with the fewest payments.
-          </p>
-        </div>
-      </header>
+    <div className="min-h-screen bg-bg text-fg">
+      <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
+        <header className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-fg">
+              Reconcile
+            </h1>
+            <p className="mt-1 text-sm text-muted">
+              Track shared expenses and settle up with the fewest payments.
+            </p>
+          </div>
+          <ThemeToggle />
+        </header>
 
-      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-        <div className="mb-8">
+        <div className="mt-8">
           <GroupSwitcher />
         </div>
 
         {activeGroup ? (
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+          <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-5">
             <div className="space-y-6 lg:col-span-3">
               <PeopleManager />
               <ExpenseForm />
@@ -40,7 +42,7 @@ function Workspace() {
             </div>
           </div>
         ) : null}
-      </main>
+      </div>
     </div>
   );
 }
