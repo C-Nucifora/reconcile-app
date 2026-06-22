@@ -6,9 +6,13 @@ import { emptyState, sanitizeState } from "./storage";
 /**
  * Remove a person from a single expense.
  *
- * - If they were the only payer, the expense can no longer be attributed and is
- *   dropped.
- * - Otherwise they are removed from the member list. For an exact split the
+ * - If they were the payer, the expense can no longer be attributed and is
+ *   dropped (both itemized and non-itemized).
+ * - Itemized expense: the person is stripped from every item's assigneeIds. An
+ *   item that loses all assignees becomes pending — it is kept, not deleted.
+ *   The expense itself survives as long as the removed person was not the payer.
+ * - Non-itemized expense: the person is removed from the member list. An expense
+ *   whose only member was the removed person is dropped. For an exact split the
  *   removed member's cents are not redistributed (the amount/members no longer
  *   match by design); the engine reconciles the remaining members back to the
  *   total. Percent/shares/equal keep their remaining weights and are re-split by
@@ -21,6 +25,20 @@ function removePersonFromExpense(
   personId: string,
 ): Expense | null {
   if (expense.payerId === personId) return null;
+
+  if (expense.items && expense.items.length > 0) {
+    let changed = false;
+    const items = expense.items.map((item) => {
+      if (!item.assigneeIds.includes(personId)) return item;
+      changed = true;
+      return {
+        ...item,
+        assigneeIds: item.assigneeIds.filter((id) => id !== personId),
+      };
+    });
+    if (!changed) return expense;
+    return { ...expense, items };
+  }
 
   const members = expense.members.filter((m) => m.personId !== personId);
   if (members.length === 0) return null;

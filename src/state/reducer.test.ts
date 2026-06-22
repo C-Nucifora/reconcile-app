@@ -101,6 +101,76 @@ describe("REMOVE_PERSON", () => {
     });
     expect(next.groups[0].expenses).toHaveLength(0);
   });
+
+  it("strips the person from item assignees on an itemized expense", () => {
+    const group: Group = {
+      id: "g",
+      name: "g",
+      people: [
+        { id: "A", name: "A" },
+        { id: "B", name: "B" },
+        { id: "C", name: "C" },
+      ],
+      expenses: [
+        {
+          id: "e1",
+          description: "groceries",
+          amountCents: 3000,
+          payerId: "A",
+          date: "2026-01-01",
+          splitType: "equal",
+          members: [],
+          items: [
+            { id: "i1", name: "milk", amountCents: 1000, assigneeIds: ["B", "C"] },
+            { id: "i2", name: "bread", amountCents: 2000, assigneeIds: ["C"] },
+          ],
+        },
+      ],
+    };
+    const next = reducer(stateWith(group), {
+      type: "REMOVE_PERSON",
+      groupId: "g",
+      personId: "C",
+    });
+    const e = next.groups[0].expenses;
+    // Expense survives (C was not the payer); C stripped from both items.
+    expect(e).toHaveLength(1);
+    expect(e[0].items?.[0].assigneeIds).toEqual(["B"]);
+    // Item that loses all assignees becomes pending but is kept, not deleted.
+    expect(e[0].items?.[1].assigneeIds).toEqual([]);
+    expect(e[0].items).toHaveLength(2);
+  });
+
+  it("deletes an itemized expense paid by the removed person", () => {
+    const group: Group = {
+      id: "g",
+      name: "g",
+      people: [
+        { id: "A", name: "A" },
+        { id: "B", name: "B" },
+      ],
+      expenses: [
+        {
+          id: "e1",
+          description: "groceries",
+          amountCents: 1000,
+          payerId: "A",
+          date: "2026-01-01",
+          splitType: "equal",
+          members: [],
+          items: [
+            { id: "i1", name: "milk", amountCents: 1000, assigneeIds: ["B"] },
+          ],
+        },
+      ],
+    };
+    const next = reducer(stateWith(group), {
+      type: "REMOVE_PERSON",
+      groupId: "g",
+      personId: "A",
+    });
+    expect(next.groups[0].expenses).toHaveLength(0);
+  });
 });
 
 describe("IMPORT_STATE", () => {
@@ -149,5 +219,65 @@ describe("IMPORT_STATE", () => {
     expect(g.expenses).toHaveLength(1);
     expect(g.expenses[0].id).toBe("e1");
     expect(g.expenses[0].members.map((m) => m.personId)).toEqual(["A"]);
+  });
+
+  it("keeps itemized expenses and strips unknown item assignees", () => {
+    const dirty = {
+      groups: [
+        {
+          id: "g",
+          name: "g",
+          people: [
+            { id: "A", name: "A" },
+            { id: "B", name: "B" },
+          ],
+          expenses: [
+            {
+              id: "e1",
+              description: "itemized",
+              amountCents: 3000,
+              payerId: "A",
+              date: "2026-01-01",
+              splitType: "equal",
+              members: [],
+              receiptImageId: "img-1",
+              items: [
+                {
+                  id: "i1",
+                  name: "milk",
+                  amountCents: 1000,
+                  // ZZZ is unknown and must be stripped; B is kept.
+                  assigneeIds: ["B", "ZZZ"],
+                },
+                {
+                  id: "i2",
+                  name: "bread",
+                  amountCents: 2000,
+                  // Loses its only (unknown) assignee -> pending, but kept.
+                  assigneeIds: ["ZZZ"],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      activeGroupId: "g",
+      schemaVersion: 1,
+    } as unknown as AppState;
+
+    const next = reducer(
+      { groups: [], activeGroupId: null, schemaVersion: 1 },
+      { type: "IMPORT_STATE", state: dirty },
+    );
+    const e = next.groups[0].expenses;
+    expect(e).toHaveLength(1);
+    expect(e[0].id).toBe("e1");
+    // Itemized expense kept; members normalized to empty.
+    expect(e[0].members).toEqual([]);
+    expect(e[0].items).toHaveLength(2);
+    expect(e[0].items?.[0].assigneeIds).toEqual(["B"]);
+    expect(e[0].items?.[1].assigneeIds).toEqual([]);
+    // String receiptImageId preserved.
+    expect(e[0].receiptImageId).toBe("img-1");
   });
 });

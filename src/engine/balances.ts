@@ -1,10 +1,20 @@
 import type { Expense, Group, ID } from "../types";
 import { splitCents } from "./money";
 
+/** An expense is itemized iff it carries a non-empty list of items. */
+function isItemized(expense: Expense): boolean {
+  return Array.isArray(expense.items) && expense.items.length > 0;
+}
+
 /**
  * Compute, for a single expense, how many cents each included member owes.
  * Returns a Map of personId -> cents owed for this expense only.
  *
+ *  - itemized: when items is non-empty, members are ignored. Each item with at
+ *              least one assignee is split EQUALLY among its assigneeIds (via
+ *              splitCents) and accumulated as per-person debits; unassigned
+ *              items contribute nothing. The result sums to the allocated total
+ *              (the sum of items that have at least one assignee).
  *  - equal:   split the amount evenly using ones as weights.
  *  - exact:   each member's value is the cents they owe; values are truncated to
  *             integer cents and then reconciled so they sum exactly to
@@ -13,11 +23,29 @@ import { splitCents } from "./money";
  *  - percent: split using each member's percentage points as weights.
  *  - shares:  split using each member's share count as weights.
  *
- * For every split type the returned shares sum exactly to amountCents (when
- * there is at least one member), so balances always net to zero.
+ * For every non-itemized split type the returned shares sum exactly to
+ * amountCents (when there is at least one member); for an itemized expense they
+ * sum to the allocated total. Either way balances net to zero because the payer
+ * is credited the matching amount (see payerCredit / computeBalances).
  */
 export function computeExpenseShares(expense: Expense): Map<ID, number> {
   const shares = new Map<ID, number>();
+
+  if (isItemized(expense)) {
+    for (const item of expense.items!) {
+      const assignees = item.assigneeIds;
+      // Unassigned items are pending and contribute nothing to balances.
+      if (assignees.length === 0) continue;
+      const weights = assignees.map(() => 1);
+      const parts = splitCents(item.amountCents, weights);
+      for (let i = 0; i < assignees.length; i++) {
+        const id = assignees[i];
+        shares.set(id, (shares.get(id) ?? 0) + parts[i]);
+      }
+    }
+    return shares;
+  }
+
   const members = expense.members;
   if (members.length === 0) return shares;
 
@@ -116,16 +144,75 @@ function reconcileExact(
 }
 
 /**
+ * How many cents the payer should be credited for an expense.
+ *
+ *  - normal:   the full amountCents.
+ *  - itemized: the ALLOCATED total — the sum of amountCents over items that
+ *              have at least one assignee. Unassigned (pending) items are not
+ *              credited because they are not debited to anyone either, so the
+ *              expense nets to exactly zero.
+ *
+ * This matches the total of computeExpenseShares for the same expense.
+ */
+export function payerCredit(expense: Expense): number {
+  if (isItemized(expense)) {
+    let allocated = 0;
+    for (const item of expense.items!) {
+      if (item.assigneeIds.length > 0) {
+        allocated += Math.trunc(item.amountCents);
+      }
+    }
+    return allocated;
+  }
+  return Math.trunc(expense.amountCents);
+}
+
+/**
+ * Cents that are entered but not yet divvied up — the sum of amountCents over
+ * UNASSIGNED items. Always 0 for a non-itemized expense.
+ */
+export function pendingCents(expense: Expense): number {
+  if (!isItemized(expense)) return 0;
+  let pending = 0;
+  for (const item of expense.items!) {
+    if (item.assigneeIds.length === 0) {
+      pending += Math.trunc(item.amountCents);
+    }
+  }
+  return pending;
+}
+
+/**
+ * The displayed total for an expense.
+ *
+ *  - normal:   amountCents.
+ *  - itemized: the sum of ALL items (assigned + unassigned). In practice this is
+ *              kept equal to amountCents by the form, but computing it from the
+ *              items keeps the display self-consistent regardless.
+ */
+export function expenseTotalCents(expense: Expense): number {
+  if (isItemized(expense)) {
+    let total = 0;
+    for (const item of expense.items!) {
+      total += Math.trunc(item.amountCents);
+    }
+    return total;
+  }
+  return Math.trunc(expense.amountCents);
+}
+
+/**
  * Compute the net balance (in cents) for every person in the group.
  * Net = total paid - total owed. Every person in group.people is present,
  * defaulting to 0.
  *
- * The engine credits each payer the full expense.amountCents and debits the
- * per-expense shares, which (because computeExpenseShares always allocates
- * exactly amountCents for a non-empty member list) net to zero across the
- * group. An expense with an empty member list contributes only the payer
- * credit and so would leave a residual; the UI blocks empty splits and load
- * validation drops them, so in practice the nets sum to zero.
+ * The engine credits each payer via payerCredit(expense) and debits the
+ * per-expense shares from computeExpenseShares. For a normal expense the credit
+ * is the full amountCents and the debits sum to amountCents; for an itemized
+ * expense both equal the allocated total (assigned items only). Either way the
+ * expense nets to zero, so the group nets to zero. An expense with an empty
+ * member list and no items contributes nothing on both sides; the UI blocks
+ * empty splits and load validation drops them.
  */
 export function computeBalances(group: Group): Map<ID, number> {
   const balances = new Map<ID, number>();
@@ -134,13 +221,13 @@ export function computeBalances(group: Group): Map<ID, number> {
   }
 
   for (const expense of group.expenses) {
-    // The payer fronted the whole amount.
+    // The payer fronted the allocated amount (full amount for normal expenses).
     balances.set(
       expense.payerId,
-      (balances.get(expense.payerId) ?? 0) + expense.amountCents
+      (balances.get(expense.payerId) ?? 0) + payerCredit(expense)
     );
 
-    // Each member owes their share.
+    // Each member/assignee owes their share.
     const shares = computeExpenseShares(expense);
     for (const [personId, owed] of shares) {
       balances.set(personId, (balances.get(personId) ?? 0) - owed);
