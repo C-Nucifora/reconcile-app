@@ -1,10 +1,81 @@
 @import "tailwindcss";
 
+/* Class-based dark variant: enables explicit `dark:` utilities for the rare
+   case a component needs a per-theme tweak (e.g. shadow strength). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---- Design tokens (light) ---- */
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #f1f5f9;
+  --border: #e5e7eb;
+  --fg: #0f172a;
+  --fg-muted: #64748b;
+  --accent: #4f46e5;
+  --accent-fg: #ffffff;
+  --positive: #059669;
+  --positive-subtle: #ecfdf5;
+  --negative: #e11d48;
+  --negative-subtle: #fff1f2;
+  --warning: #d97706;
+  --warning-subtle: #fffbeb;
+  color-scheme: light;
+}
+
+/* ---- Design tokens (dark) ---- */
+.dark {
+  --bg: #0b0f17;
+  --surface: #121826;
+  --surface-2: #1e2636;
+  --border: #2a3346;
+  --fg: #f1f5f9;
+  --fg-muted: #93a4bd;
+  --accent: #6366f1;
+  --accent-fg: #ffffff;
+  --positive: #34d399;
+  --positive-subtle: rgba(52, 211, 153, 0.14);
+  --negative: #fb7185;
+  --negative-subtle: rgba(251, 113, 133, 0.15);
+  --warning: #fbbf24;
+  --warning-subtle: rgba(251, 191, 36, 0.15);
+  color-scheme: dark;
+}
+
+/* ---- Map tokens into Tailwind v4 so semantic color utilities exist ---- */
+@theme {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--border);
+  --color-fg: var(--fg);
+  --color-muted: var(--fg-muted);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-positive: var(--positive);
+  --color-positive-soft: var(--positive-subtle);
+  --color-negative: var(--negative);
+  --color-negative-soft: var(--negative-subtle);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-subtle);
+}
+
 html,
 body {
   height: 100%;
 }
 
 body {
-  background-color: #f8fafc;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+/* Keep theme transitions subtle, and skip them entirely when the user
+   prefers reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  body {
+    transition:
+      background-color 200ms ease,
+      color 200ms ease;
+  }
 }
