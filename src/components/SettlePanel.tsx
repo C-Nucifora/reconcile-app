@@ -1,64 +1,73 @@
 import { useMemo } from "react";
 import { useApp } from "../state/AppContext";
-import { computeBalances } from "../engine/balances";
+import { computeBalances, pendingCents } from "../engine/balances";
 import { settle } from "../engine/settle";
 import { formatCents } from "../engine/money";
+import Icon from "./Icon";
 
 export function SettlePanel() {
   const { activeGroup } = useApp();
-
-  const nameOf = useMemo(() => {
-    const map = new Map<string, string>();
-    if (activeGroup) {
-      for (const person of activeGroup.people) map.set(person.id, person.name);
-    }
-    return map;
-  }, [activeGroup]);
-
-  const transfers = useMemo(() => {
-    if (!activeGroup) return [];
-    return settle(computeBalances(activeGroup));
-  }, [activeGroup]);
-
+  const transfers = useMemo(
+    () => (activeGroup ? settle(computeBalances(activeGroup)) : []),
+    [activeGroup],
+  );
+  const nameOf = new Map(
+    activeGroup?.people.map((person) => [person.id, person.name]),
+  );
   const hasData =
-    !!activeGroup &&
-    activeGroup.people.length > 0 &&
-    activeGroup.expenses.length > 0;
-
+    !!activeGroup?.people.length && !!activeGroup?.expenses.length;
+  const pending = activeGroup?.expenses.some(
+    (expense) => pendingCents(expense) > 0,
+  );
   return (
-    <section className="rounded-xl border border-line bg-surface p-5 shadow-sm">
-      <h2 className="text-lg font-semibold text-fg">Settle up</h2>
-
+    <section className="settle-panel">
+      <div className="panel-heading">
+        <h2>Settle up</h2>
+        <Icon name="arrow" size={19} />
+      </div>
+      <p className="panel-subtitle">Fewer payments. All square.</p>
       {!hasData ? (
-        <p className="mt-3 text-sm text-muted">
-          Add people and expenses to get a settlement plan.
+        <p className="mt-5 text-xs leading-relaxed text-muted">
+          Once you've added expenses, your payment plan will appear here.
+        </p>
+      ) : pending && transfers.length === 0 ? (
+        <p className="mt-5 text-xs leading-relaxed text-warning">
+          Assign the remaining receipt items to finish your payment plan.
         </p>
       ) : transfers.length === 0 ? (
-        <div className="mt-4 rounded-lg bg-positive-soft px-4 py-3 text-sm font-semibold text-positive">
-          All settled up!
+        <div className="mt-5 flex items-center gap-2 text-sm text-positive">
+          <Icon name="check" /> All settled up.
         </div>
       ) : (
-        <ul className="mt-4 space-y-2">
-          {transfers.map((transfer, index) => (
-            <li
-              key={`${transfer.fromId}-${transfer.toId}-${index}`}
-              className="flex items-center justify-between gap-4 rounded-lg bg-surface-2 px-4 py-2.5 text-sm"
-            >
-              <span className="text-muted">
-                <span className="font-medium text-fg">
-                  {nameOf.get(transfer.fromId) ?? "Unknown"}
-                </span>{" "}
-                pays{" "}
-                <span className="font-medium text-fg">
-                  {nameOf.get(transfer.toId) ?? "Unknown"}
+        <>
+          {pending && (
+            <p className="mt-4 text-xs leading-relaxed text-warning">
+              This plan is provisional. Unassigned receipt items are excluded.
+            </p>
+          )}
+          <ul>
+            {transfers.map((transfer, index) => (
+              <li
+                key={`${transfer.fromId}-${transfer.toId}-${index}`}
+                className="transfer-row"
+              >
+                <div className="transfer-people">
+                  <strong>{nameOf.get(transfer.fromId) ?? "Unknown"}</strong>
+                  <span className="sr-only">pays</span>
+                  <Icon name="arrow" size={13} />
+                  <strong>{nameOf.get(transfer.toId) ?? "Unknown"}</strong>
+                </div>
+                <span className="transfer-amount">
+                  ${formatCents(transfer.amountCents)}
                 </span>
-              </span>
-              <span className="font-semibold tabular-nums text-fg">
-                {formatCents(transfer.amountCents)}
-              </span>
-            </li>
-          ))}
-        </ul>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-4 text-xs text-muted">
+            {transfers.length} {transfers.length === 1 ? "payment" : "payments"}{" "}
+            to settle the group.
+          </p>
+        </>
       )}
     </section>
   );

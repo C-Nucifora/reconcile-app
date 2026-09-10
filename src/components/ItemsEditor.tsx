@@ -210,7 +210,7 @@ export default function ItemsEditor({
 
               {pending && (item.name.trim() !== "" || valid) && (
                 <p className="mt-2 text-xs font-medium text-warning">
-                  Pending — tap people to split this item.
+                  Select people to split this item.
                 </p>
               )}
             </li>

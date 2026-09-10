@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useApp } from "../state/AppContext";
+import { Avatar } from "./Icon";
 import type { Person } from "../types";
 
 export default function PeopleManager() {
@@ -74,7 +75,7 @@ export default function PeopleManager() {
   }
 
   return (
-    <div className="rounded-xl border border-line bg-surface p-6 shadow-sm">
+    <div className="people-panel">
       <div className="mb-4 flex items-baseline justify-between gap-3">
         <h2 className="text-xs font-medium uppercase tracking-wide text-muted">
           People
@@ -164,7 +165,8 @@ export default function PeopleManager() {
                     </button>
                   </span>
                 ) : (
-                  <span className="group inline-flex items-center gap-1 rounded-full border border-line bg-surface-2 py-1 pl-3 pr-1 text-sm text-fg">
+                  <span className="person-chip">
+                    <Avatar name={person.name} small />
                     <button
                       type="button"
                       onClick={() => startEditing(person)}

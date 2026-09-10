@@ -1,9 +1,12 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import type { Expense, ExpenseItem, ID, SplitMember } from "../types";
 import { useApp } from "../state/AppContext";
 import { parseAmountToCents } from "../engine/money";
 import { newId } from "../lib/id";
-import SplitEditor, { isSplitValid, type SplitEditorValue } from "./SplitEditor";
+import SplitEditor, {
+  isSplitValid,
+  type SplitEditorValue,
+} from "./SplitEditor";
 import ItemsEditor, {
   areItemsValid,
   emptyItemDraft,
@@ -38,21 +41,23 @@ function draftsFromExpense(
   }));
 }
 
-export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps) {
+export default function ExpenseForm({
+  editingExpense,
+  onDone,
+}: ExpenseFormProps) {
   const { dispatch, activeGroup } = useApp();
+  const formId = useId();
   const people = activeGroup?.people ?? [];
   const isEditing = Boolean(editingExpense);
 
-  const peopleIds = useMemo(
-    () => new Set(people.map((p) => p.id)),
-    [people],
-  );
+  const peopleIds = useMemo(() => new Set(people.map((p) => p.id)), [people]);
 
   const [description, setDescription] = useState(
     editingExpense?.description ?? "",
   );
   const [amountInput, setAmountInput] = useState(() =>
-    editingExpense && (!editingExpense.items || editingExpense.items.length === 0)
+    editingExpense &&
+    (!editingExpense.items || editingExpense.items.length === 0)
       ? (editingExpense.amountCents / 100).toFixed(2)
       : "",
   );
@@ -125,10 +130,7 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
     amountCents !== null &&
     isSplitValid(amountCents, split.splitType, split.members);
 
-  const itemsValid = useMemo(
-    () => areItemsValid(itemDrafts),
-    [itemDrafts],
-  );
+  const itemsValid = useMemo(() => areItemsValid(itemDrafts), [itemDrafts]);
 
   const canSubmit =
     people.length > 0 &&
@@ -215,6 +217,7 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
     } else {
       dispatch({ type: "ADD_EXPENSE", groupId: activeGroup.id, expense });
       resetForAdd();
+      onDone?.();
     }
   }
 
@@ -235,8 +238,9 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
   }
 
   // Defend against a stale payer if people changed underneath us.
-  const effectivePayerId =
-    people.some((p) => p.id === payerId) ? payerId : people[0]?.id ?? "";
+  const effectivePayerId = people.some((p) => p.id === payerId)
+    ? payerId
+    : (people[0]?.id ?? "");
 
   const inputClass =
     "w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent";
@@ -244,10 +248,7 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
     "block text-xs font-medium uppercase tracking-wide text-muted";
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="space-y-4 rounded-xl border border-line bg-surface p-5 shadow-sm"
-    >
+    <form onSubmit={handleSubmit} className="expense-form space-y-5">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-base font-semibold text-fg">
           {isEditing ? "Edit expense" : "Add an expense"}
@@ -259,6 +260,7 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
             <button
               type="button"
               role="switch"
+              aria-label="Itemize expense"
               aria-checked={itemized}
               onClick={() => setItemized((v) => !v)}
               className={
@@ -275,15 +277,18 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
             </button>
           </label>
           <p className="text-right text-xs text-muted">
-            Switching keeps your entries; only the active mode is saved.
+            Split individual receipt items.
           </p>
         </div>
       </div>
 
       <div className="space-y-1">
-        <label className={labelClass}>Description</label>
+        <label htmlFor={`${formId}-description`} className={labelClass}>
+          Description
+        </label>
         <input
           type="text"
+          id={`${formId}-description`}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Dinner, groceries, taxi…"
@@ -299,10 +304,13 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
       >
         {!itemized && (
           <div className="space-y-1">
-            <label className={labelClass}>Amount</label>
+            <label htmlFor={`${formId}-amount`} className={labelClass}>
+              Amount
+            </label>
             <input
               type="text"
               inputMode="decimal"
+              id={`${formId}-amount`}
               value={amountInput}
               onChange={(e) => setAmountInput(e.target.value)}
               placeholder="0.00"
@@ -321,8 +329,11 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
         )}
 
         <div className="space-y-1">
-          <label className={labelClass}>Paid by</label>
+          <label htmlFor={`${formId}-payer`} className={labelClass}>
+            Paid by
+          </label>
           <select
+            id={`${formId}-payer`}
             value={effectivePayerId}
             onChange={(e) => setPayerId(e.target.value)}
             className={inputClass}
@@ -336,9 +347,12 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
         </div>
 
         <div className="space-y-1">
-          <label className={labelClass}>Date</label>
+          <label htmlFor={`${formId}-date`} className={labelClass}>
+            Date
+          </label>
           <input
             type="date"
+            id={`${formId}-date`}
             value={date}
             max={today()}
             onChange={(e) => setDate(e.target.value)}

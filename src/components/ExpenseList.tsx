@@ -2,13 +2,12 @@ import { useMemo, useState } from "react";
 import type { Expense, Person } from "../types";
 import { useApp } from "../state/AppContext";
 import { formatCents } from "../engine/money";
-import {
-  expenseTotalCents,
-  pendingCents,
-} from "../engine/balances";
+import { expenseTotalCents, pendingCents } from "../engine/balances";
 import { deleteImage } from "../lib/imageStore";
 import ExpenseForm from "./ExpenseForm";
 import ReceiptViewer from "./ReceiptViewer";
+import Dialog from "./Dialog";
+import Icon from "./Icon";
 
 const SPLIT_LABEL: Record<Expense["splitType"], string> = {
   equal: "split equally",
@@ -30,12 +29,12 @@ function splitSummary(expense: Expense, nameById: Map<string, string>): string {
   const count = expense.members.length;
   const who =
     count === 1
-      ? nameById.get(expense.members[0].personId) ?? "1 person"
+      ? (nameById.get(expense.members[0].personId) ?? "1 person")
       : `${count} people`;
   return `${SPLIT_LABEL[expense.splitType]} · ${who}`;
 }
 
-export default function ExpenseList() {
+export default function ExpenseList({ onAdd }: { onAdd: () => void }) {
   const { activeGroup, dispatch } = useApp();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [viewingReceiptId, setViewingReceiptId] = useState<string | null>(null);
@@ -82,41 +81,52 @@ export default function ExpenseList() {
 
   if (ordered.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-line bg-surface p-8 text-center">
-        <p className="text-sm font-medium text-fg">No expenses yet</p>
-        <p className="mt-1 text-sm text-muted">
-          Add your first expense above to start tracking.
+      <div className="empty-ledger">
+        <Icon name="receipt" size={30} />
+        <h3>A fresh start.</h3>
+        <p>
+          {people.length
+            ? "Add the first expense. We'll work out everyone's share."
+            : "Add your people below, then record your first expense."}
         </p>
+        <button
+          className="button-secondary"
+          onClick={onAdd}
+          disabled={!people.length}
+        >
+          <Icon name="plus" size={15} /> Add your first expense
+        </button>
       </div>
     );
   }
 
   return (
     <>
-      <ul className="space-y-3">
+      <ul className="expense-ledger">
         {ordered.map((expense) => {
           const payerName = nameById.get(expense.payerId) ?? "Unknown";
           const isEditing = editingId === expense.id;
 
-          if (isEditing) {
-            return (
-              <li key={expense.id}>
-                <ExpenseForm
-                  editingExpense={expense}
-                  onDone={() => setEditingId(null)}
-                />
-              </li>
-            );
-          }
-
           const pending = pendingCents(expense);
 
           return (
-            <li
-              key={expense.id}
-              className="flex items-center gap-4 rounded-xl border border-line bg-surface p-4 shadow-sm"
-            >
-              <div className="min-w-0 flex-1">
+            <li key={expense.id} className="expense-row">
+              {isEditing && (
+                <Dialog
+                  title="Edit expense"
+                  onClose={() => setEditingId(null)}
+                  wide
+                >
+                  <ExpenseForm
+                    editingExpense={expense}
+                    onDone={() => setEditingId(null)}
+                  />
+                </Dialog>
+              )}
+              <span className="expense-icon">
+                <Icon name="receipt" size={19} />
+              </span>
+              <div className="expense-info">
                 <div className="flex min-w-0 items-center gap-2">
                   <p className="truncate text-sm font-semibold text-fg">
                     {expense.description}
@@ -139,33 +149,35 @@ export default function ExpenseList() {
                 </p>
                 {pending > 0 && (
                   <span className="mt-1.5 inline-flex items-center rounded-md bg-warning-soft px-2 py-0.5 text-xs font-medium tabular-nums text-warning">
-                    pending: {formatCents(pending)} (
-                    {expense.items!.filter((i) => i.assigneeIds.length === 0)
-                      .length}
+                    pending: ${formatCents(pending)} (
+                    {
+                      expense.items!.filter((i) => i.assigneeIds.length === 0)
+                        .length
+                    }
                     )
                   </span>
                 )}
               </div>
 
-              <div className="text-right text-sm font-semibold tabular-nums text-fg">
-                {formatCents(expenseTotalCents(expense))}
-              </div>
-
-              <div className="flex shrink-0 items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setEditingId(expense.id)}
-                  className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted hover:bg-surface-2 hover:text-fg"
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDelete(expense)}
-                  className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-negative hover:bg-negative-soft"
-                >
-                  Delete
-                </button>
+              <div className="expense-value">
+                <p>${formatCents(expenseTotalCents(expense))}</p>
+                <div className="expense-actions">
+                  <button
+                    type="button"
+                    onClick={() => setEditingId(expense.id)}
+                    aria-label={`Edit ${expense.description}`}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(expense)}
+                    className="text-negative"
+                    aria-label={`Delete ${expense.description}`}
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
             </li>
           );

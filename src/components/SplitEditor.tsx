@@ -114,7 +114,10 @@ export default function SplitEditor({
     if (splitType === "percent") {
       const sum = members.reduce((acc, m) => acc + m.value, 0);
       if (sum !== 100) {
-        return { ok: false, message: `Percentages add up to ${sum}% (must be 100%).` };
+        return {
+          ok: false,
+          message: `Percentages add up to ${sum}% (must be 100%).`,
+        };
       }
       return { ok: true, message: "Percentages add up to 100%." };
     }
@@ -178,6 +181,7 @@ export default function SplitEditor({
               key={type}
               type="button"
               onClick={() => setSplitType(type)}
+              aria-pressed={active}
               className={
                 "rounded-md px-3 py-1.5 text-sm font-medium transition " +
                 (active
@@ -197,10 +201,7 @@ export default function SplitEditor({
           const member = members.find((m) => m.personId === person.id);
           const share = shares.get(person.id) ?? 0;
           return (
-            <li
-              key={person.id}
-              className="flex items-center gap-3 px-3 py-2"
-            >
+            <li key={person.id} className="flex items-center gap-3 px-3 py-2">
               <label className="flex flex-1 items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -209,9 +210,7 @@ export default function SplitEditor({
                   className="h-4 w-4 rounded border-line text-accent focus:ring-accent"
                 />
                 <span
-                  className={
-                    "text-sm " + (included ? "text-fg" : "text-muted")
-                  }
+                  className={"text-sm " + (included ? "text-fg" : "text-muted")}
                 >
                   {person.name}
                 </span>
@@ -222,6 +221,7 @@ export default function SplitEditor({
                   <span className="text-xs text-muted">$</span>
                   <input
                     type="number"
+                    aria-label={`${person.name} exact amount`}
                     step="0.01"
                     min="0"
                     inputMode="decimal"
@@ -240,6 +240,7 @@ export default function SplitEditor({
                     type="number"
                     step="1"
                     min="0"
+                    aria-label={`${person.name} percentage`}
                     max="100"
                     inputMode="numeric"
                     value={member ? member.value.toString() : ""}
@@ -257,6 +258,7 @@ export default function SplitEditor({
                   <input
                     type="number"
                     step="1"
+                    aria-label={`${person.name} shares`}
                     min="1"
                     inputMode="numeric"
                     value={member ? member.value.toString() : ""}
@@ -322,11 +324,17 @@ function distributeEvenly(
     return members.map((m) => ({ personId: m.personId, value: 1 }));
   }
   if (next === "percent") {
-    const parts = splitCents(100, members.map(() => 1));
+    const parts = splitCents(
+      100,
+      members.map(() => 1),
+    );
     return members.map((m, i) => ({ personId: m.personId, value: parts[i] }));
   }
   if (next === "exact") {
-    const parts = splitCents(amountCents, members.map(() => 1));
+    const parts = splitCents(
+      amountCents,
+      members.map(() => 1),
+    );
     return members.map((m, i) => ({ personId: m.personId, value: parts[i] }));
   }
   // equal: values are ignored.

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import Dialog from "./Dialog";
 import type { Group } from "../types";
 import type { ReportSections } from "../export/report";
 
@@ -59,17 +60,8 @@ export default function ExportModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Export PDF"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-sm rounded-xl border border-line bg-surface p-5 shadow-lg"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Dialog title="Export PDF" onClose={onClose}>
+      <div className="export-content">
         <h2 className="text-lg font-semibold text-fg">Export PDF</h2>
         <p className="mt-1 text-sm text-muted">
           Choose which sections to include.
@@ -112,6 +104,6 @@ export default function ExportModal({
           </button>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }
