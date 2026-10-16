@@ -115,6 +115,5 @@ workflow:
 
 ## 9. Delivery / Conventions
 
-Commit in logical stages, plain messages, no AI/co-author trailers, identity
-C-Nucifora <143251500+C-Nucifora@users.noreply.github.com>. The app remains local-first, offline, and dependency-light
-(no UI/component library, no CSS-in-JS — Tailwind v4 tokens only).
+Commit in logical stages with plain messages. The app keeps its data in the browser
+and uses Tailwind v4 tokens without a UI component library or CSS-in-JS.

@@ -2,90 +2,68 @@
 
 [![CI](https://github.com/C-Nucifora/reconcile-app/actions/workflows/ci.yml/badge.svg)](https://github.com/C-Nucifora/reconcile-app/actions/workflows/ci.yml)
 
-A local-first web app for figuring out **who owes whom** after a group shares costs.
-
-Enter expenses (who paid, how much, how it splits) and Reconcile computes each person's
-**net balance** and the **minimal set of payments** needed to settle up. If you pay for one
-thing and someone else pays for your more-expensive thing, the debts **net out**
-automatically — and the settle-up plan never asks anyone to make more transfers than
-necessary.
-
-Everything runs in your browser. No accounts, no server, no data leaves your machine.
+A browser app for splitting group expenses and working out who owes whom.
+Enter expenses, choose how to divide them, and get net balances and a settlement plan.
+Calculations and data storage run in your browser, without an account or backend.
 
 ## Features
 
-- **Multiple groups** — keep separate tabs like "Ski trip" and "Flatmates", each with its
-  own people and expenses.
-- **Flexible splits** — split each expense **equally**, by **exact amounts**, by
-  **percentage**, or by **shares**, with live validation that the split adds up.
-- **Net balances** — see at a glance who is owed and who owes.
-- **Minimal settle-up** — a short "X pays Y $Z" list computed with a greedy min-cash-flow
-  algorithm.
-- **Exact money math** — all amounts are handled in integer cents with deterministic
-  remainder distribution, so splits always sum to the total exactly (no floating-point
-  rounding drift).
-- **Local persistence** — your data is saved in the browser's `localStorage` and survives
-  refreshes. Works offline.
-
-## Tech stack
-
-React 19 + TypeScript, bundled with Vite. Tailwind CSS v4 for styling. State via
-`useReducer` + Context. Unit tests with Vitest. No backend.
+- Separate groups for trips, households and other shared costs.
+- Equal, exact-amount, percentage and share-based splits.
+- Itemized expenses with per-item assignments and optional receipt photos.
+- Net balances and a deterministic settlement plan that matches the largest debts
+  against the largest credits. This greedy algorithm does not guarantee the fewest
+  possible transfers.
+- Integer-cent calculations with deterministic rounding.
+- PDF reports with settlement, expense and per-person sections.
+- Light, dark and system themes.
 
 ## Getting started
 
-```bash
-npm install      # install dependencies
-npm run dev      # start the dev server (prints a local URL to open)
+Use Node.js 20, 22 or 24, matching the CI matrix, with npm.
+
+```sh
+npm ci
+npm run dev
 ```
 
-Then open the printed `localhost` URL in your browser.
+Open the local URL printed by Vite. For a production build, run `npm run build`;
+the static site is written to `dist/`. Use `npm run preview` to inspect that build.
 
-## Scripts
+## Data and privacy
 
-| Command | Description |
+Group names, people and expenses are stored in this browser's `localStorage`.
+Receipt images are stored separately in IndexedDB. The app does not upload these
+records or sync them between devices. The site host still receives normal page
+requests when you load the app.
+
+Clearing site data or using a different browser, profile or site origin makes the
+saved records unavailable. Treat exported PDF reports as personal financial data;
+only share the sections you intend to disclose. A PDF report is not a restorable
+backup of your browser data.
+
+Use fictional names, expenses and receipts in issues, screenshots and test fixtures.
+Keep real exports, receipts and local configuration outside the repository. Root
+`exports/`, `receipts/` and `.local-data/` folders are ignored for local testing.
+
+## Development
+
+React and TypeScript with Vite, Tailwind CSS and Vitest.
+
+| Command | Purpose |
 | --- | --- |
-| `npm run dev` | Start the Vite dev server with hot reload. |
-| `npm run build` | Type-check (`tsc --noEmit`) and produce a production build in `dist/`. |
+| `npm run dev` | Start the development server. |
+| `npm run build` | Type-check and build the static site. |
 | `npm run preview` | Serve the production build locally. |
-| `npm run lint` | Lint with ESLint (TypeScript + React Hooks rules). |
-| `npm run typecheck` | Type-check without emitting (`tsc --noEmit`). |
-| `npm run test` | Run the unit test suite once. |
+| `npm run lint` | Run ESLint. |
+| `npm run typecheck` | Run TypeScript without emitting files. |
+| `npm test` | Run the unit tests once. |
 | `npm run test:watch` | Run tests in watch mode. |
-| `npm run test:coverage` | Run tests and produce a coverage report in `coverage/`. |
+| `npm run test:coverage` | Run tests with coverage. |
 
-## Continuous integration
+The [CI workflow](.github/workflows/ci.yml) runs lint, type-checking, tests with
+coverage and a build on Node.js 20, 22 and 24 for pushes and pull requests to `main`.
 
-Every push and pull request to `main` runs the [CI workflow](.github/workflows/ci.yml) on a
-Node 20 / 22 / 24 matrix: **lint → type-check → test (with coverage) → build**. All four must
-pass for the run to go green.
-
-## How it works
-
-The code is split into two layers with a hard boundary:
-
-- **A pure calculation engine** (`src/engine/`) — `money.ts` (cents parsing/formatting and
-  the largest-remainder `splitCents`), `balances.ts` (per-person net balances), and
-  `settle.ts` (minimal transfers). No React, no DOM — just functions, fully unit-tested.
-- **A React UI layer** (`src/components/`, `src/state/`) — holds app state, persists it to
-  `localStorage`, and renders the group switcher, people manager, expense form with split
-  editor, expense list, and the balances and settle-up panels.
-
-## Project layout
-
-```
-src/
-  engine/        pure calculation engine (money, balances, settle) + tests
-  state/         reducer, actions, context, localStorage persistence
-  components/    UI: GroupSwitcher, PeopleManager, ExpenseForm, SplitEditor,
-                 ExpenseList, BalancesPanel, SettlePanel
-  lib/           small helpers (id generation)
-  types.ts       shared domain types
-  App.tsx        layout that wires it all together
-docs/            design spec
-```
-
-## Notes
-
-This is a single-user, local-first app: data is stored only in your browser and is not
-synced anywhere. Clearing site data / `localStorage` will remove your groups and expenses.
+The calculation engine is in `src/engine/`, browser state and validation in
+`src/state/`, receipt storage in `src/lib/imageStore.ts`, PDF generation in
+`src/export/`, and the interface in `src/components/`. Design notes are in `docs/`.

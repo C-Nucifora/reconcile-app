@@ -169,5 +169,4 @@ image store is isolated behind its async interface).
 - Build via a multi-agent workflow (user-selected): scaffold the frozen additions to the
   contract, fan out engine / state / UI work on disjoint files, integrate, then an
   adversarial review (engine correctness, image-store robustness, UX/edge cases) and a fix
-  pass. Commit in logical stages, plain messages, no AI/co-author trailers, identity
-  C-Nucifora <143251500+C-Nucifora@users.noreply.github.com>.
+  pass. Commit in logical stages with plain messages.
