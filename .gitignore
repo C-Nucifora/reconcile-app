@@ -4,3 +4,17 @@ dist/
 *.local
 .vite/
 coverage/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Personal files used during development
+/.local-data/
+/receipts/
+/exports/
