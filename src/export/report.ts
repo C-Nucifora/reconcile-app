@@ -24,6 +24,7 @@ export interface ReportData {
     date: string;
     payerName: string;
     amountCents: number;
+    pendingCents?: number;
     splitSummary: string;
     items?: { name: string; cents: number; assigneeNames: string[] }[];
   }[];
@@ -84,6 +85,7 @@ export function buildReport(
         date: e.date,
         payerName: name(e.payerId),
         amountCents: expenseTotalCents(e),
+        pendingCents: expenseTotalCents(e) - payerCredit(e),
         splitSummary: splitSummary(e),
         items: itemized
           ? e.items!.map((it) => ({

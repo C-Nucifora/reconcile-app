@@ -20,7 +20,7 @@ Calculations and data storage run in your browser, without an account or backend
 
 ## Getting started
 
-Use Node.js 20, 22 or 24, matching the CI matrix, with npm.
+Use Node.js 20.19+, 22.13+ or 24, matching the CI matrix, with npm.
 
 ```sh
 npm ci
@@ -37,10 +37,25 @@ Receipt images are stored separately in IndexedDB. The app does not upload these
 records or sync them between devices. The site host still receives normal page
 requests when you load the app.
 
+Serve the app over HTTPS or localhost. Saving uses Web Locks to prevent two tabs
+from overwriting each other's changes. A stale tab asks you to reload. If storage
+is full or denied, keep the tab open and retry saving after fixing the problem.
+Invalid saved records block editing and preserve the original stored bytes.
+
+Unused uploads created in the current tab are cleaned up when their form closes.
+Previously saved receipt images remain in IndexedDB after expense deletion, so
+another tab's draft cannot lose its photo. These retained images consume storage.
+Clearing site data removes all groups and receipts. Browser-profile access and
+scripts running on the same site origin can read this local data.
+
 Clearing site data or using a different browser, profile or site origin makes the
 saved records unavailable. Treat exported PDF reports as personal financial data;
 only share the sections you intend to disclose. A PDF report is not a restorable
 backup of your browser data.
+
+PDFs omit receipt photos. The bundled fonts cover Latin, Greek and Cyrillic;
+other scripts and some emoji may render as missing glyphs. Negative expenses and
+refunds are unsupported. Pending item amounts stay outside balances until assigned.
 
 Use fictional names, expenses and receipts in issues, screenshots and test fixtures.
 Keep real exports, receipts and local configuration outside the repository. Root

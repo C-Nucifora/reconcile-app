@@ -76,6 +76,8 @@ describe("buildReport", () => {
     const snacks = r.expenses!.find((e) => e.description === "Snacks")!;
     expect(snacks.splitSummary).toBe("Itemised");
     expect(snacks.payerName).toBe("Bob");
+    expect(snacks.amountCents).toBe(1000);
+    expect(snacks.pendingCents).toBe(400);
     expect(snacks.items).toEqual([
       { name: "Chips", cents: 600, assigneeNames: ["Ann"] },
       { name: "Soda", cents: 400, assigneeNames: [] },
@@ -95,5 +97,51 @@ describe("buildReport", () => {
     ]);
     const sum = r.perPerson!.reduce((acc, p) => acc + p.netCents, 0);
     expect(sum).toBe(0);
+  });
+
+  it.each([
+    { mode: "equal", values: [0, 0], owed: [51, 50] },
+    { mode: "exact", values: [30, 71], owed: [30, 71] },
+    { mode: "percent", values: [25, 75], owed: [25, 76] },
+    { mode: "shares", values: [1, 2], owed: [34, 67] },
+  ] as const)("keeps integer-cent totals consistent for $mode splits", ({ mode, values, owed }) => {
+    const g = group();
+    g.expenses = [{
+      ...g.expenses[0], amountCents: 101, splitType: mode,
+      members: [{ personId: "a", value: values[0] }, { personId: "b", value: values[1] }],
+    }];
+    const r = buildReport(g, { sections: ALL, generatedDate: "2026-11-12" });
+    expect(r.expenses![0]).toMatchObject({ amountCents: 101, pendingCents: 0 });
+    expect(r.perPerson!.map((person) => person.owedCents)).toEqual(owed);
+    expect(r.perPerson!.map((person) => person.paidCents)).toEqual([101, 0]);
+    expect(r.settleUp!.netBalances.map((balance) => balance.cents)).toEqual([owed[1], -owed[1]]);
+    expect(r.settleUp!.transfers).toEqual([{ from: "Bob", to: "Ann", cents: owed[1] }]);
+  });
+
+  it("respects all section combinations without changing input or exporting receipt identifiers", () => {
+    const g = group();
+    g.expenses[0].receiptImageId = "fictional-private-receipt-id";
+    const before = structuredClone(g);
+    for (let mask = 0; mask < 8; mask++) {
+      const sections = { settleUp: Boolean(mask & 1), expenses: Boolean(mask & 2), perPerson: Boolean(mask & 4) };
+      const r = buildReport(g, { sections, generatedDate: "2026-11-12" });
+      for (const section of ["settleUp", "expenses", "perPerson"] as const) {
+        expect(r[section] !== undefined).toBe(sections[section]);
+      }
+      expect(JSON.stringify(r)).not.toContain("fictional-private-receipt-id");
+    }
+    expect(g).toEqual(before);
+  });
+
+  it("exports an empty group and fully pending items without creating debt", () => {
+    const g = group();
+    g.expenses = [g.expenses[1]];
+    g.expenses[0].items![0].assigneeIds = [];
+    const r = buildReport(g, { sections: ALL, generatedDate: "2026-11-12" });
+    expect(r.expenses![0]).toMatchObject({ amountCents: 1000, pendingCents: 1000 });
+    expect(r.settleUp!.transfers).toEqual([]);
+    expect(r.perPerson!.map((person) => person.netCents)).toEqual([0, 0]);
+    expect(buildReport({ ...g, people: [], expenses: [] }, { sections: ALL, generatedDate: "2026-11-12" }))
+      .toMatchObject({ settleUp: { transfers: [], netBalances: [] }, expenses: [], perPerson: [] });
   });
 });
