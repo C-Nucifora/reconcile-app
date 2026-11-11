@@ -19,6 +19,18 @@ function assertBounded(raw: unknown, depth = 0, budget = { remaining: 1_000_000,
   }
 }
 
+function serializeState(state: AppState): string {
+  const raw = JSON.stringify(state);
+  if (raw.length > MAX_STORED_CHARS) throw new Error("Saved data exceeds the supported storage size.");
+  return raw;
+}
+
+/** Apply the same deterministic limits before accepting a live edit or saving. */
+export function assertStorageBounds(state: AppState): void {
+  assertBounded(state);
+  serializeState(state);
+}
+
 export function emptyState(): AppState {
   return { groups: [], activeGroupId: null, schemaVersion: 1 };
 }
@@ -246,12 +258,21 @@ function sameRecord(raw: unknown, clean: unknown): boolean {
 }
 
 /** Repair is available separately; persistence must never silently discard data. */
-export function validateState(raw: unknown): AppState {
-  const state = sanitizeState(raw);
+function validateRecords(raw: unknown): AppState {
+  const migrated = raw && typeof raw === "object" && !Array.isArray(raw) &&
+    (raw as AppState).schemaVersion === undefined ? { ...raw, schemaVersion: 1 } : raw;
+  const state = sanitizeState(migrated);
   if (!raw || typeof raw !== "object" || Array.isArray(raw) ||
-      !sameRecord({ ...raw, schemaVersion: (raw as AppState).schemaVersion ?? 1 }, state)) {
+      !sameRecord(migrated, state)) {
     throw new Error("Saved data contains invalid or unrecognized records. The original has been preserved. Recover a copy before editing.");
   }
+  return state;
+}
+
+export function validateState(raw: unknown): AppState {
+  const state = validateRecords(raw);
+  // Compact input can expand when numbers, strings or the migrated version are serialized.
+  serializeState(state);
   return state;
 }
 
@@ -284,8 +305,7 @@ export class StaleStateError extends Error {
 
 /** Serialize cooperating tabs; checking localStorage alone is not atomic. */
 export async function saveState(state: AppState, expectedRaw: string | null): Promise<string> {
-  const raw = JSON.stringify(validateState(state));
-  if (raw.length > MAX_STORED_CHARS) throw new Error("Saved data exceeds the supported storage size.");
+  const raw = serializeState(validateRecords(state));
   if (typeof navigator === "undefined" || !navigator.locks) {
     throw new Error("This browser cannot safely save changes across tabs. Use a browser with Web Locks support.");
   }

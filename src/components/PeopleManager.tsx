@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { useApp } from "../state/AppContext";
+import { MAX_TEXT_LENGTH } from "../state/storage";
 import type { Person } from "../types";
 
 export default function PeopleManager() {
@@ -7,6 +8,7 @@ export default function PeopleManager() {
   const [newName, setNewName] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const [nameError, setNameError] = useState<string | null>(null);
   const editing = useRef<string | null>(null);
   const restoreFocus = useRef<string | null>(null);
   const added = useRef(false);
@@ -39,22 +41,35 @@ export default function PeopleManager() {
   const groupId = activeGroup.id;
   const people = activeGroup.people;
 
+  function rejectName(name: string) {
+    setNameError(name.length > MAX_TEXT_LENGTH
+      ? `Names must be at most ${MAX_TEXT_LENGTH.toLocaleString()} characters. Your draft is still here. Shorten it and try again.`
+      : "The name could not be accepted. Your draft is still here. Try a shorter name or remove unneeded records if the history is full. If editing is blocked, follow the saved-data warning.");
+  }
+
   function handleAdd() {
     const name = newName.trim();
     if (!name || added.current) return;
     added.current = true;
-    dispatch({ type: "ADD_PERSON", groupId, name });
+    if (!dispatch({ type: "ADD_PERSON", groupId, name })) {
+      added.current = false;
+      rejectName(name);
+      return;
+    }
+    setNameError(null);
     setNewName("");
     newNameRef.current?.focus();
   }
 
   function startEditing(person: Person) {
+    setNameError(null);
     editing.current = person.id;
     setEditingId(person.id);
     setEditName(person.name);
   }
 
   function cancelEditing(focus = false) {
+    setNameError(null);
     if (focus) restoreFocus.current = editing.current;
     editing.current = null;
     setEditingId(null);
@@ -64,10 +79,13 @@ export default function PeopleManager() {
   function commitEditing(person: Person, focus = false) {
     if (editing.current !== person.id) return;
     const name = editName.trim();
-    cancelEditing(focus);
     if (name && name !== person.name) {
-      dispatch({ type: "RENAME_PERSON", groupId, personId: person.id, name });
+      if (!dispatch({ type: "RENAME_PERSON", groupId, personId: person.id, name })) {
+        rejectName(name);
+        return;
+      }
     }
+    cancelEditing(focus);
   }
 
   function handleRemove(person: Person) {
@@ -108,6 +126,7 @@ export default function PeopleManager() {
           value={newName}
           onChange={(e) => {
             added.current = false;
+            setNameError(null);
             setNewName(e.target.value);
           }}
           placeholder="Add a person by name"
@@ -122,6 +141,8 @@ export default function PeopleManager() {
           Add
         </button>
       </form>
+
+      {nameError && <p role="alert" className="mb-4 text-sm text-negative">{nameError}</p>}
 
       {people.length === 0 ? (
         <div className="rounded-lg border border-dashed border-line bg-surface-2 px-4 py-8 text-center">
@@ -147,7 +168,10 @@ export default function PeopleManager() {
                       value={editName}
                       autoFocus
                       aria-label={`Rename ${person.name}`}
-                      onChange={(e) => setEditName(e.target.value)}
+                      onChange={(e) => {
+                        setNameError(null);
+                        setEditName(e.target.value);
+                      }}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
                           e.preventDefault();

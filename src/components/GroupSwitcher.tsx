@@ -1,23 +1,50 @@
+import { useState } from "react";
 import { useApp } from "../state/AppContext";
+import { MAX_TEXT_LENGTH } from "../state/storage";
 
 export default function GroupSwitcher() {
   const { state, dispatch, activeGroup } = useApp();
   const { groups } = state;
+  const [rejectedName, setRejectedName] = useState<{ groupId: string | null; name: string } | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
+
+  function promptForName(groupId: string | null) {
+    const group = groups.find((group) => group.id === groupId);
+    if (groupId !== null && !group) {
+      setNameError("This group no longer exists. Create or select a group to continue.");
+      return;
+    }
+    const draft = rejectedName?.groupId === groupId ? rejectedName.name : group?.name ?? "";
+    const entered = window.prompt(group ? "Rename group" : "Name your group", draft);
+    if (entered === null) return;
+    const name = entered.trim();
+    if (name && (name === group?.name || dispatch(group
+      ? { type: "RENAME_GROUP", groupId: group.id, name }
+      : { type: "ADD_GROUP", name }))) {
+      setRejectedName(null);
+      setNameError(null);
+      return;
+    }
+    setRejectedName({ groupId, name: entered });
+    setNameError(!name ? "Enter a group name and try again."
+      : name.length > MAX_TEXT_LENGTH ? `Names must be at most ${MAX_TEXT_LENGTH.toLocaleString()} characters. Shorten the name and try again.`
+      : "The group name could not be accepted. Try a shorter name or remove unneeded records if the saved history is full. If editing is blocked, follow the saved-data warning before retrying.");
+  }
 
   function handleNewGroup() {
-    const name = window.prompt("Name your group")?.trim();
-    if (name) {
-      dispatch({ type: "ADD_GROUP", name });
-    }
+    promptForName(null);
   }
 
   function handleRename() {
-    if (!activeGroup) return;
-    const name = window.prompt("Rename group", activeGroup.name)?.trim();
-    if (name && name !== activeGroup.name) {
-      dispatch({ type: "RENAME_GROUP", groupId: activeGroup.id, name });
-    }
+    if (activeGroup) promptForName(activeGroup.id);
   }
+
+  const error = nameError && (
+    <div role="alert" className="p-4 text-sm text-negative">
+      <p>{nameError}</p>
+      {rejectedName && <button type="button" onClick={() => promptForName(rejectedName.groupId)} className="mt-1 underline">Try name again</button>}
+    </div>
+  );
 
   function handleDelete() {
     if (!activeGroup) return;
@@ -44,6 +71,7 @@ export default function GroupSwitcher() {
         >
           Create your first group
         </button>
+        {error}
       </div>
     );
   }
@@ -106,6 +134,7 @@ export default function GroupSwitcher() {
           </button>
         </div>
       </div>
+      {error}
     </div>
   );
 }

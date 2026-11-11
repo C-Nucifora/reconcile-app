@@ -1,7 +1,7 @@
 import type { AppState, Expense, Group, Person } from "../types";
 import type { Action } from "./actions";
 import { newId } from "../lib/id";
-import { emptyState, validateState } from "./storage";
+import { assertStorageBounds, emptyState, validateState } from "./storage";
 import { computeExpenseShares } from "../engine/balances";
 
 /**
@@ -63,6 +63,17 @@ function updateGroup(
 }
 
 export function reducer(state: AppState, action: Action): AppState {
+  const next = reduce(state, action);
+  if (next === state) return state;
+  try {
+    assertStorageBounds(next);
+    return next;
+  } catch {
+    return state;
+  }
+}
+
+function reduce(state: AppState, action: Action): AppState {
   switch (action.type) {
     case "ADD_GROUP": {
       const group: Group = {
@@ -79,7 +90,7 @@ export function reducer(state: AppState, action: Action): AppState {
     }
 
     case "RENAME_GROUP": {
-      return updateGroup(state, action.groupId, (g) => ({
+      return updateGroup(state, action.groupId, (g) => g.name === action.name ? g : ({
         ...g,
         name: action.name,
       }));
@@ -110,12 +121,14 @@ export function reducer(state: AppState, action: Action): AppState {
     }
 
     case "RENAME_PERSON": {
-      return updateGroup(state, action.groupId, (g) => ({
-        ...g,
-        people: g.people.map((p) =>
-          p.id === action.personId ? { ...p, name: action.name } : p,
-        ),
-      }));
+      return updateGroup(state, action.groupId, (g) => {
+        const person = g.people.find((p) => p.id === action.personId);
+        if (!person || person.name === action.name) return g;
+        return {
+          ...g,
+          people: g.people.map((p) => p === person ? { ...p, name: action.name } : p),
+        };
+      });
     }
 
     case "REMOVE_PERSON": {
