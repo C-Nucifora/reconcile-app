@@ -44,7 +44,7 @@ export function SettlePanel() {
               key={`${transfer.fromId}-${transfer.toId}-${index}`}
               className="flex items-center justify-between gap-4 rounded-lg bg-surface-2 px-4 py-2.5 text-sm"
             >
-              <span className="text-muted">
+              <span className="min-w-0 flex-1 [overflow-wrap:anywhere] text-muted">
                 <span className="font-medium text-fg">
                   {nameOf.get(transfer.fromId) ?? "Unknown"}
                 </span>{" "}
@@ -53,7 +53,7 @@ export function SettlePanel() {
                   {nameOf.get(transfer.toId) ?? "Unknown"}
                 </span>
               </span>
-              <span className="font-semibold tabular-nums text-fg">
+              <span className="min-w-0 [overflow-wrap:anywhere] text-right font-semibold tabular-nums text-fg">
                 {formatCents(transfer.amountCents)}
               </span>
             </li>

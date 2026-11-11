@@ -1,6 +1,7 @@
-import { useMemo } from "react";
+import { useId, useMemo, useState } from "react";
 import type { Person, SplitType, SplitMember } from "../types";
-import { splitCents, formatCents } from "../engine/money";
+import { splitCents, formatCents, parseAmountToCents } from "../engine/money";
+import { isSplitValid } from "./expenseValidation";
 
 export interface SplitEditorValue {
   splitType: SplitType;
@@ -22,28 +23,6 @@ const SPLIT_TYPES: { type: SplitType; label: string }[] = [
 ];
 
 /**
- * Pure validity check for a split. Shared by SplitEditor's inline message
- * and by ExpenseForm to decide whether submit is enabled.
- */
-export function isSplitValid(
-  amountCents: number,
-  splitType: SplitType,
-  members: SplitMember[],
-): boolean {
-  if (members.length === 0) return false;
-  if (splitType === "exact") {
-    return members.reduce((acc, m) => acc + m.value, 0) === amountCents;
-  }
-  if (splitType === "percent") {
-    return members.reduce((acc, m) => acc + m.value, 0) === 100;
-  }
-  if (splitType === "shares") {
-    return members.every((m) => m.value > 0);
-  }
-  return true; // equal
-}
-
-/**
  * Compute each included member's share in cents for preview purposes.
  * Mirrors the engine's computeExpenseShares logic for a single expense.
  */
@@ -53,7 +32,7 @@ function previewShares(
   members: SplitMember[],
 ): Map<string, number> {
   const result = new Map<string, number>();
-  if (members.length === 0) return result;
+  if (!isSplitValid(amountCents, splitType, members)) return result;
 
   if (splitType === "exact") {
     for (const m of members) result.set(m.personId, m.value);
@@ -82,6 +61,8 @@ export default function SplitEditor({
   onChange,
 }: SplitEditorProps) {
   const { splitType, members } = value;
+  const validationId = useId();
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
 
   const includedIds = useMemo(
     () => new Set(members.map((m) => m.personId)),
@@ -97,8 +78,16 @@ export default function SplitEditor({
     if (members.length === 0) {
       return { ok: false, message: "Select at least one person." };
     }
+    if (!Number.isSafeInteger(amountCents) || amountCents < 0 ||
+        members.some((m) => !Number.isFinite(m.value) || m.value < 0 ||
+          (splitType === "exact" && !Number.isSafeInteger(m.value)))) {
+      return { ok: false, message: "Enter valid non-negative split values." };
+    }
     if (splitType === "exact") {
       const sum = members.reduce((acc, m) => acc + m.value, 0);
+      if (!Number.isSafeInteger(sum)) {
+        return { ok: false, message: "Exact amounts are too large." };
+      }
       if (sum !== amountCents) {
         const diff = amountCents - sum;
         return {
@@ -113,14 +102,14 @@ export default function SplitEditor({
     }
     if (splitType === "percent") {
       const sum = members.reduce((acc, m) => acc + m.value, 0);
-      if (sum !== 100) {
+      if (!isSplitValid(amountCents, splitType, members)) {
         return { ok: false, message: `Percentages add up to ${sum}% (must be 100%).` };
       }
       return { ok: true, message: "Percentages add up to 100%." };
     }
     if (splitType === "shares") {
-      if (members.some((m) => !(m.value > 0))) {
-        return { ok: false, message: "Every share must be a positive number." };
+      if (members.some((m) => !Number.isSafeInteger(m.value) || m.value <= 0)) {
+        return { ok: false, message: "Every share must be a positive whole number within the supported range." };
       }
       return { ok: true, message: "Split by shares." };
     }
@@ -130,6 +119,7 @@ export default function SplitEditor({
 
   function setSplitType(next: SplitType) {
     if (next === splitType) return;
+    setDrafts({});
     // Pre-fill an even distribution so the freshly-switched split starts valid
     // instead of forcing the user to re-type every value from scratch.
     const nextMembers = distributeEvenly(next, amountCents, members);
@@ -137,6 +127,11 @@ export default function SplitEditor({
   }
 
   function toggleMember(personId: string) {
+    setDrafts((previous) => {
+      const next = { ...previous };
+      delete next[personId];
+      return next;
+    });
     if (includedIds.has(personId)) {
       onChange({
         splitType,
@@ -151,14 +146,14 @@ export default function SplitEditor({
   }
 
   function setMemberValue(personId: string, raw: string, asCents: boolean) {
+    setDrafts((previous) => ({ ...previous, [personId]: raw }));
     let value: number;
     if (asCents) {
       // exact: interpret as a currency amount -> cents
-      const num = Number(raw);
-      value = Number.isFinite(num) ? Math.round(num * 100) : 0;
+      value = parseAmountToCents(raw) ?? NaN;
     } else {
-      const num = Number(raw);
-      value = Number.isFinite(num) ? num : 0;
+      const num = /^(?:\d+(?:\.\d*)?|\.\d+)$/.test(raw.trim()) ? Number(raw) : NaN;
+      value = Number.isFinite(num) ? num : NaN;
     }
     onChange({
       splitType,
@@ -178,8 +173,9 @@ export default function SplitEditor({
               key={type}
               type="button"
               onClick={() => setSplitType(type)}
+              aria-pressed={active}
               className={
-                "rounded-md px-3 py-1.5 text-sm font-medium transition " +
+                "rounded-md px-3 py-1.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent " +
                 (active
                   ? "bg-accent text-accent-fg"
                   : "text-muted hover:bg-surface-2")
@@ -191,7 +187,7 @@ export default function SplitEditor({
         })}
       </div>
 
-      <ul className="divide-y divide-line rounded-lg border border-line">
+      <ul aria-label="Split participants" className="divide-y divide-line rounded-lg border border-line">
         {people.map((person) => {
           const included = includedIds.has(person.id);
           const member = members.find((m) => m.personId === person.id);
@@ -201,16 +197,16 @@ export default function SplitEditor({
               key={person.id}
               className="flex items-center gap-3 px-3 py-2"
             >
-              <label className="flex flex-1 items-center gap-2 cursor-pointer">
+              <label className="flex min-w-0 flex-1 items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={included}
                   onChange={() => toggleMember(person.id)}
-                  className="h-4 w-4 rounded border-line text-accent focus:ring-accent"
+                  className="h-4 w-4 shrink-0 rounded border-line text-accent focus:ring-accent"
                 />
                 <span
                   className={
-                    "text-sm " + (included ? "text-fg" : "text-muted")
+                    "min-w-0 [overflow-wrap:anywhere] text-sm " + (included ? "text-fg" : "text-muted")
                   }
                 >
                   {person.name}
@@ -221,11 +217,12 @@ export default function SplitEditor({
                 <div className="flex items-center gap-1">
                   <span className="text-xs text-muted">$</span>
                   <input
-                    type="number"
-                    step="0.01"
-                    min="0"
+                    type="text"
                     inputMode="decimal"
-                    value={member ? (member.value / 100).toString() : ""}
+                    aria-label={`Exact amount for ${person.name}`}
+                    aria-invalid={member ? !Number.isSafeInteger(member.value) || member.value < 0 : false}
+                    aria-describedby={validationId}
+                    value={drafts[person.id] ?? (member && Number.isSafeInteger(member.value) ? formatCents(member.value) : "")}
                     onChange={(e) =>
                       setMemberValue(person.id, e.target.value, true)
                     }
@@ -237,12 +234,12 @@ export default function SplitEditor({
               {included && splitType === "percent" && (
                 <div className="flex items-center gap-1">
                   <input
-                    type="number"
-                    step="1"
-                    min="0"
-                    max="100"
-                    inputMode="numeric"
-                    value={member ? member.value.toString() : ""}
+                    type="text"
+                    inputMode="decimal"
+                    aria-label={`Percentage for ${person.name}`}
+                    aria-invalid={member ? !Number.isFinite(member.value) || member.value < 0 || member.value > 100 : false}
+                    aria-describedby={validationId}
+                    value={drafts[person.id] ?? (member && Number.isFinite(member.value) ? member.value.toString() : "")}
                     onChange={(e) =>
                       setMemberValue(person.id, e.target.value, false)
                     }
@@ -255,11 +252,12 @@ export default function SplitEditor({
               {included && splitType === "shares" && (
                 <div className="flex items-center gap-1">
                   <input
-                    type="number"
-                    step="1"
-                    min="1"
+                    type="text"
                     inputMode="numeric"
-                    value={member ? member.value.toString() : ""}
+                    aria-label={`Shares for ${person.name}`}
+                    aria-invalid={member ? !Number.isSafeInteger(member.value) || member.value <= 0 : false}
+                    aria-describedby={validationId}
+                    value={drafts[person.id] ?? (member && Number.isFinite(member.value) ? member.value.toString() : "")}
                     onChange={(e) =>
                       setMemberValue(person.id, e.target.value, false)
                     }
@@ -280,6 +278,8 @@ export default function SplitEditor({
       </ul>
 
       <p
+        id={validationId}
+        role="status"
         className={
           "text-xs " + (validation.ok ? "text-positive" : "text-negative")
         }

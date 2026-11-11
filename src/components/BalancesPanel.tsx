@@ -66,13 +66,13 @@ export function BalancesPanel() {
                   key={row.id}
                   className="flex items-center justify-between gap-4 py-2.5"
                 >
-                  <span className="font-medium text-fg">{row.name}</span>
+                  <span className="min-w-0 flex-1 [overflow-wrap:anywhere] font-medium text-fg">{row.name}</span>
                   {isOwed ? (
-                    <span className="text-sm font-semibold tabular-nums text-positive">
+                    <span className="min-w-0 [overflow-wrap:anywhere] text-right text-sm font-semibold tabular-nums text-positive">
                       is owed {formatCents(row.net)}
                     </span>
                   ) : owes ? (
-                    <span className="text-sm font-semibold tabular-nums text-negative">
+                    <span className="min-w-0 [overflow-wrap:anywhere] text-right text-sm font-semibold tabular-nums text-negative">
                       owes {formatCents(-row.net)}
                     </span>
                   ) : (

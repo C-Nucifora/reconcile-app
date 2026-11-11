@@ -1,16 +1,19 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import type { Expense, ExpenseItem, ID, SplitMember } from "../types";
 import { useApp } from "../state/AppContext";
-import { parseAmountToCents } from "../engine/money";
+import { formatCents, parseAmountToCents } from "../engine/money";
 import { newId } from "../lib/id";
-import SplitEditor, { isSplitValid, type SplitEditorValue } from "./SplitEditor";
-import ItemsEditor, {
+import SplitEditor, { type SplitEditorValue } from "./SplitEditor";
+import ItemsEditor from "./ItemsEditor";
+import {
+  isSplitValid,
   areItemsValid,
   emptyItemDraft,
   itemCents,
   type ItemDraft,
-} from "./ItemsEditor";
+} from "./expenseValidation";
 import ReceiptUpload from "./ReceiptUpload";
+import { MAX_TEXT_LENGTH } from "../state/storage";
 
 interface ExpenseFormProps {
   editingExpense?: Expense;
@@ -18,7 +21,9 @@ interface ExpenseFormProps {
 }
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 10);
 }
 
 // Seed the itemized editor from an existing expense, dropping assignees that
@@ -33,14 +38,17 @@ function draftsFromExpense(
   return expense.items.map((item) => ({
     id: item.id,
     name: item.name,
-    priceInput: (item.amountCents / 100).toFixed(2),
+    priceInput: formatCents(item.amountCents),
     assigneeIds: item.assigneeIds.filter((id) => peopleIds.has(id)),
   }));
 }
 
 export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps) {
   const { dispatch, activeGroup } = useApp();
-  const people = activeGroup?.people ?? [];
+  const formId = useId();
+  const people = useMemo(() => activeGroup?.people ?? [], [activeGroup?.people]);
+  const submitted = useRef(false);
+  const descriptionRef = useRef<HTMLInputElement>(null);
   const isEditing = Boolean(editingExpense);
 
   const peopleIds = useMemo(
@@ -51,9 +59,11 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
   const [description, setDescription] = useState(
     editingExpense?.description ?? "",
   );
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [receiptDraft, setReceiptDraft] = useState(0);
   const [amountInput, setAmountInput] = useState(() =>
     editingExpense && (!editingExpense.items || editingExpense.items.length === 0)
-      ? (editingExpense.amountCents / 100).toFixed(2)
+      ? formatCents(editingExpense.amountCents)
       : "",
   );
   const [payerId, setPayerId] = useState(
@@ -69,7 +79,7 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
     editingExpense?.receiptImageId,
   );
 
-  const [split, setSplit] = useState<SplitEditorValue>(() => {
+  const [split, setSplit] = useState<SplitEditorValue | null>(() => {
     if (editingExpense && editingExpense.members.length > 0) {
       // Drop members referencing a person who has since been removed; an
       // orphaned member is invisible in the editor but would otherwise be
@@ -81,10 +91,7 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
           .map((m) => ({ ...m })),
       };
     }
-    return {
-      splitType: "equal",
-      members: people.map((p): SplitMember => ({ personId: p.id, value: 0 })),
-    };
+    return null;
   });
 
   const [itemDrafts, setItemDrafts] = useState<ItemDraft[]>(() =>
@@ -121,38 +128,60 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
     return total;
   }, [itemDrafts]);
 
+  const draftSplit = split ?? {
+    splitType: "equal" as const,
+    members: people.map((p): SplitMember => ({ personId: p.id, value: 0 })),
+  };
+  const currentMembers = draftSplit.members.filter((m) => peopleIds.has(m.personId));
+  const currentSplit = { ...draftSplit, members: currentMembers };
+  const currentItemDrafts = itemDrafts.map((item) => ({
+    ...item, assigneeIds: item.assigneeIds.filter((id) => peopleIds.has(id)),
+  }));
+
   const splitValid =
     amountCents !== null &&
-    isSplitValid(amountCents, split.splitType, split.members);
+    isSplitValid(amountCents, currentSplit.splitType, currentMembers);
 
   const itemsValid = useMemo(
     () => areItemsValid(itemDrafts),
     [itemDrafts],
   );
 
+  // Use the same payer for display and submission after people change.
+  const effectivePayerId = peopleIds.has(payerId) ? payerId : people[0]?.id ?? "";
+
+  const otherExpensesTotal = (activeGroup?.expenses ?? [])
+    .filter((expense) => expense.id !== editingExpense?.id)
+    .reduce((total, expense) => total + expense.amountCents, 0);
+  const proposedTotal = otherExpensesTotal + (itemized ? itemsTotalCents : amountCents ?? 0);
+  const totalTooLarge = !Number.isSafeInteger(proposedTotal);
+  const textTooLong = description.trim().length > MAX_TEXT_LENGTH ||
+    (itemized && itemDrafts.some((item) => item.name.trim().length > MAX_TEXT_LENGTH));
+
   const canSubmit =
+    !totalTooLarge &&
+    !textTooLong &&
     people.length > 0 &&
     description.trim() !== "" &&
-    Boolean(payerId) &&
+    Boolean(effectivePayerId) &&
     date.trim() !== "" &&
     (itemized
-      ? itemsValid && itemsTotalCents > 0
+      ? itemsValid && Number.isSafeInteger(itemsTotalCents) && itemsTotalCents > 0
       : amountCents !== null &&
         amountCents > 0 &&
-        split.members.length > 0 &&
+        currentMembers.length > 0 &&
         splitValid);
 
   function resetForAdd() {
+    setSubmitError(null);
+    setReceiptDraft((value) => value + 1);
     setDescription("");
     setAmountInput("");
     setPayerId(people[0]?.id ?? "");
     setDate(today());
     setItemized(false);
     setReceiptImageId(undefined);
-    setSplit({
-      splitType: "equal",
-      members: people.map((p): SplitMember => ({ personId: p.id, value: 0 })),
-    });
+    setSplit(null);
     setItemDrafts([emptyItemDraft()]);
   }
 
@@ -177,7 +206,7 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!canSubmit || !activeGroup) return;
+    if (!canSubmit || !activeGroup || submitted.current) return;
 
     let expense: Expense;
     if (itemized) {
@@ -188,7 +217,7 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
         id: editingExpense?.id ?? newId(),
         description: description.trim(),
         amountCents: total,
-        payerId,
+        payerId: effectivePayerId,
         date,
         splitType: "equal",
         members: [],
@@ -201,20 +230,26 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
         id: editingExpense?.id ?? newId(),
         description: description.trim(),
         amountCents,
-        payerId,
+        payerId: effectivePayerId,
         date,
-        splitType: split.splitType,
-        members: split.members.map((m) => ({ ...m })),
+        splitType: currentSplit.splitType,
+        members: currentMembers.map((m) => ({ ...m })),
         ...(receiptImageId ? { receiptImageId } : {}),
       };
     }
 
+    submitted.current = true;
+    const accepted = dispatch({ type: isEditing ? "UPDATE_EXPENSE" : "ADD_EXPENSE", groupId: activeGroup.id, expense });
+    if (!accepted) {
+      submitted.current = false;
+      setSubmitError("The expense could not be accepted. Your draft is still here. Check its values and text lengths before retrying.");
+      return;
+    }
     if (isEditing) {
-      dispatch({ type: "UPDATE_EXPENSE", groupId: activeGroup.id, expense });
       onDone?.();
     } else {
-      dispatch({ type: "ADD_EXPENSE", groupId: activeGroup.id, expense });
       resetForAdd();
+      descriptionRef.current?.focus();
     }
   }
 
@@ -234,10 +269,6 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
     );
   }
 
-  // Defend against a stale payer if people changed underneath us.
-  const effectivePayerId =
-    people.some((p) => p.id === payerId) ? payerId : people[0]?.id ?? "";
-
   const inputClass =
     "w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent";
   const labelClass =
@@ -246,6 +277,8 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
   return (
     <form
       onSubmit={handleSubmit}
+      onChange={() => { submitted.current = false; setSubmitError(null); }}
+      aria-label={isEditing ? "Edit expense" : "Add an expense"}
       className="space-y-4 rounded-xl border border-line bg-surface p-5 shadow-sm"
     >
       <div className="flex items-center justify-between gap-3">
@@ -259,10 +292,11 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
             <button
               type="button"
               role="switch"
+              aria-label="Itemize expense"
               aria-checked={itemized}
               onClick={() => setItemized((v) => !v)}
               className={
-                "relative inline-flex h-5 w-9 items-center rounded-full transition " +
+                "relative inline-flex h-5 w-9 items-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent " +
                 (itemized ? "bg-accent" : "bg-surface-2 border border-line")
               }
             >
@@ -281,9 +315,13 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
       </div>
 
       <div className="space-y-1">
-        <label className={labelClass}>Description</label>
+        <label htmlFor={`${formId}-description`} className={labelClass}>Description</label>
         <input
           type="text"
+          id={`${formId}-description`}
+          maxLength={MAX_TEXT_LENGTH}
+          ref={descriptionRef}
+          autoFocus={isEditing}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Dinner, groceries, taxi…"
@@ -299,14 +337,16 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
       >
         {!itemized && (
           <div className="space-y-1">
-            <label className={labelClass}>Amount</label>
+            <label htmlFor={`${formId}-amount`} className={labelClass}>Amount</label>
             <input
               type="text"
+              id={`${formId}-amount`}
               inputMode="decimal"
               value={amountInput}
               onChange={(e) => setAmountInput(e.target.value)}
               placeholder="0.00"
               aria-invalid={amountInvalid}
+              aria-describedby={amountInvalid ? `${formId}-amount-error` : undefined}
               className={
                 "w-full rounded-lg border bg-surface px-3 py-2 text-sm tabular-nums text-fg placeholder:text-muted focus:outline-none focus:ring-2 " +
                 (amountInvalid
@@ -315,14 +355,15 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
               }
             />
             {amountInvalid && (
-              <p className="text-xs text-negative">Enter a valid amount.</p>
+              <p id={`${formId}-amount-error`} className="text-xs text-negative">Enter a valid amount.</p>
             )}
           </div>
         )}
 
         <div className="space-y-1">
-          <label className={labelClass}>Paid by</label>
+          <label htmlFor={`${formId}-payer`} className={labelClass}>Paid by</label>
           <select
+            id={`${formId}-payer`}
             value={effectivePayerId}
             onChange={(e) => setPayerId(e.target.value)}
             className={inputClass}
@@ -336,9 +377,10 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
         </div>
 
         <div className="space-y-1">
-          <label className={labelClass}>Date</label>
+          <label htmlFor={`${formId}-date`} className={labelClass}>Date</label>
           <input
             type="date"
+            id={`${formId}-date`}
             value={date}
             max={today()}
             onChange={(e) => setDate(e.target.value)}
@@ -361,33 +403,45 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
 
       {itemized ? (
         <div className="space-y-2">
-          <label className={labelClass}>Items</label>
+          <p className={labelClass}>Items</p>
           <ItemsEditor
             people={people}
-            items={itemDrafts}
+            items={currentItemDrafts}
             onChange={setItemDrafts}
           />
         </div>
       ) : (
         <div className="space-y-2">
-          <label className={labelClass}>Split between</label>
+          <p className={labelClass}>Split between</p>
           <SplitEditor
             amountCents={amountCents ?? 0}
             people={people}
-            value={split}
+            value={currentSplit}
             onChange={setSplit}
           />
         </div>
       )}
 
-      <ReceiptUpload imageId={receiptImageId} onChange={setReceiptImageId} />
+      <ReceiptUpload key={receiptDraft} imageId={receiptImageId} onChange={setReceiptImageId} />
+
+      {(textTooLong || submitError) && (
+        <p role="alert" className="text-sm text-negative">
+          {textTooLong ? `Descriptions and item names must be at most ${MAX_TEXT_LENGTH.toLocaleString()} characters. Your draft is still here.` : submitError}
+        </p>
+      )}
+
+      {totalTooLarge && (
+        <p role="alert" className="text-sm text-negative">
+          This expense would make the group total too large. Reduce the amount.
+        </p>
+      )}
 
       <div className="flex items-center gap-3 pt-1">
         <button
           type="submit"
           disabled={!canSubmit}
           className={
-            "rounded-lg px-4 py-2 text-sm font-medium transition " +
+            "rounded-lg px-4 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent " +
             (canSubmit
               ? "bg-accent text-accent-fg hover:opacity-90"
               : "cursor-not-allowed bg-surface-2 text-muted")
@@ -399,7 +453,7 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
           <button
             type="button"
             onClick={() => onDone?.()}
-            className="rounded-lg px-4 py-2 text-sm font-medium text-muted transition hover:bg-surface-2"
+            className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-lg px-4 py-2 text-sm font-medium text-muted transition hover:bg-surface-2"
           >
             Cancel
           </button>

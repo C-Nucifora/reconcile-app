@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { reducer } from "./reducer";
 import type { AppState, Group } from "../types";
+import { validateState } from "./storage";
 
 function stateWith(group: Group): AppState {
   return { groups: [group], activeGroupId: group.id, schemaVersion: 1 };
@@ -174,7 +175,7 @@ describe("REMOVE_PERSON", () => {
 });
 
 describe("IMPORT_STATE", () => {
-  it("sanitizes imported state, dropping expenses with unknown members", () => {
+  it("rejects an import with unknown people without replacing existing data", () => {
     const dirty = {
       groups: [
         {
@@ -210,18 +211,12 @@ describe("IMPORT_STATE", () => {
       schemaVersion: 1,
     } as unknown as AppState;
 
-    const next = reducer(
-      { groups: [], activeGroupId: null, schemaVersion: 1 },
-      { type: "IMPORT_STATE", state: dirty },
-    );
-    const g = next.groups[0];
-    // e1 kept but its unknown member stripped; e2 dropped (unknown payer).
-    expect(g.expenses).toHaveLength(1);
-    expect(g.expenses[0].id).toBe("e1");
-    expect(g.expenses[0].members.map((m) => m.personId)).toEqual(["A"]);
+    const original = stateWith({ id: "existing", name: "Fictional group", people: [], expenses: [] });
+    expect(reducer(original, { type: "IMPORT_STATE", state: dirty })).toBe(original);
+    expect(dirty.groups[0].expenses).toHaveLength(2);
   });
 
-  it("keeps itemized expenses and strips unknown item assignees", () => {
+  it("requires explicit correction of unknown item assignees before importing", () => {
     const dirty = {
       groups: [
         {
@@ -265,10 +260,11 @@ describe("IMPORT_STATE", () => {
       schemaVersion: 1,
     } as unknown as AppState;
 
-    const next = reducer(
-      { groups: [], activeGroupId: null, schemaVersion: 1 },
-      { type: "IMPORT_STATE", state: dirty },
-    );
+    const original = stateWith({ id: "existing", name: "Fictional group", people: [], expenses: [] });
+    expect(reducer(original, { type: "IMPORT_STATE", state: dirty })).toBe(original);
+    dirty.groups[0].expenses[0].items![0].assigneeIds = ["B"];
+    dirty.groups[0].expenses[0].items![1].assigneeIds = [];
+    const next = reducer(original, { type: "IMPORT_STATE", state: dirty });
     const e = next.groups[0].expenses;
     expect(e).toHaveLength(1);
     expect(e[0].id).toBe("e1");
@@ -280,4 +276,18 @@ describe("IMPORT_STATE", () => {
     // String receiptImageId preserved.
     expect(e[0].receiptImageId).toBe("img-1");
   });
+});
+
+it("keeps exact splits durable after removing a member", () => {
+  const group: Group = {
+    id: "g", name: "Fictional trip",
+    people: [{ id: "A", name: "Alex" }, { id: "B", name: "Blair" }, { id: "C", name: "Casey" }],
+    expenses: [{ id: "e", description: "Fictional dinner", amountCents: 101, payerId: "A", date: "2026-01-01", splitType: "exact", members: [
+      { personId: "A", value: 10 }, { personId: "B", value: 80 }, { personId: "C", value: 11 },
+    ] }],
+  };
+  const next = reducer(stateWith(group), { type: "REMOVE_PERSON", groupId: "g", personId: "C" });
+  expect(next.groups[0].expenses[0].members).toEqual([{ personId: "A", value: 16 }, { personId: "B", value: 85 }]);
+  expect(validateState(JSON.parse(JSON.stringify(next)))).toEqual(next);
+  expect(reducer(next, { type: "REMOVE_PERSON", groupId: "g", personId: "C" })).toBe(next);
 });

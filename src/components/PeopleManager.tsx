@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useApp } from "../state/AppContext";
 import type { Person } from "../types";
 
@@ -7,6 +7,10 @@ export default function PeopleManager() {
   const [newName, setNewName] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const editing = useRef<string | null>(null);
+  const restoreFocus = useRef<string | null>(null);
+  const added = useRef(false);
+  const newNameRef = useRef<HTMLInputElement>(null);
 
   // personId -> whether they appear in any expense of the active group.
   const involvedIds = useMemo(() => {
@@ -37,40 +41,47 @@ export default function PeopleManager() {
 
   function handleAdd() {
     const name = newName.trim();
-    if (!name) return;
+    if (!name || added.current) return;
+    added.current = true;
     dispatch({ type: "ADD_PERSON", groupId, name });
     setNewName("");
+    newNameRef.current?.focus();
   }
 
   function startEditing(person: Person) {
+    editing.current = person.id;
     setEditingId(person.id);
     setEditName(person.name);
   }
 
-  function cancelEditing() {
+  function cancelEditing(focus = false) {
+    if (focus) restoreFocus.current = editing.current;
+    editing.current = null;
     setEditingId(null);
     setEditName("");
   }
 
-  function commitEditing(person: Person) {
+  function commitEditing(person: Person, focus = false) {
+    if (editing.current !== person.id) return;
     const name = editName.trim();
+    cancelEditing(focus);
     if (name && name !== person.name) {
       dispatch({ type: "RENAME_PERSON", groupId, personId: person.id, name });
     }
-    cancelEditing();
   }
 
   function handleRemove(person: Person) {
     if (involvedIds.has(person.id)) {
       const ok = window.confirm(
         `${person.name} appears in one or more expenses in this group. ` +
-          `Removing them will not delete those expenses, but it may leave balances that no longer add up. ` +
+          `Expenses they paid will be deleted. Their other shares will be redistributed, and item assignments may become pending. ` +
           `Remove anyway?`,
       );
       if (!ok) return;
     }
     if (editingId === person.id) cancelEditing();
     dispatch({ type: "REMOVE_PERSON", groupId, personId: person.id });
+    newNameRef.current?.focus();
   }
 
   return (
@@ -93,8 +104,12 @@ export default function PeopleManager() {
       >
         <input
           type="text"
+          ref={newNameRef}
           value={newName}
-          onChange={(e) => setNewName(e.target.value)}
+          onChange={(e) => {
+            added.current = false;
+            setNewName(e.target.value);
+          }}
           placeholder="Add a person by name"
           aria-label="Person name"
           className="min-w-0 flex-1 rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent"
@@ -102,7 +117,7 @@ export default function PeopleManager() {
         <button
           type="submit"
           disabled={!newName.trim()}
-          className="shrink-0 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent shrink-0 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Add
         </button>
@@ -121,7 +136,12 @@ export default function PeopleManager() {
             return (
               <li key={person.id}>
                 {isEditing ? (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-line bg-surface py-1 pl-2 pr-1">
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full border border-line bg-surface py-1 pl-2 pr-1"
+                    onBlur={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget)) commitEditing(person);
+                    }}
+                  >
                     <input
                       type="text"
                       value={editName}
@@ -131,21 +151,20 @@ export default function PeopleManager() {
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
                           e.preventDefault();
-                          commitEditing(person);
+                          commitEditing(person, true);
                         } else if (e.key === "Escape") {
                           e.preventDefault();
-                          cancelEditing();
+                          cancelEditing(true);
                         }
                       }}
-                      onBlur={() => commitEditing(person)}
-                      className="w-28 min-w-0 bg-transparent px-1 text-sm text-fg focus:outline-none"
+                      className="w-28 min-w-0 bg-transparent px-1 text-sm text-fg focus:outline-none focus:ring-2 focus:ring-accent rounded"
                     />
                     <button
                       type="button"
                       onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => commitEditing(person)}
+                      onClick={() => commitEditing(person, true)}
                       aria-label="Save name"
-                      className="rounded-full p-1 text-muted transition hover:bg-surface-2 hover:text-fg"
+                      className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-full p-1 text-muted transition hover:bg-surface-2 hover:text-fg"
                     >
                       <svg
                         viewBox="0 0 20 20"
@@ -167,9 +186,16 @@ export default function PeopleManager() {
                   <span className="group inline-flex items-center gap-1 rounded-full border border-line bg-surface-2 py-1 pl-3 pr-1 text-sm text-fg">
                     <button
                       type="button"
+                      ref={(node) => {
+                        if (node && restoreFocus.current === person.id) {
+                          restoreFocus.current = null;
+                          node.focus();
+                        }
+                      }}
+                      aria-label={`Rename ${person.name}`}
                       onClick={() => startEditing(person)}
                       title="Rename"
-                      className="max-w-[12rem] truncate font-medium text-fg transition hover:text-accent"
+                      className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent max-w-[12rem] truncate font-medium text-fg transition hover:text-accent"
                     >
                       {person.name}
                     </button>
@@ -178,7 +204,7 @@ export default function PeopleManager() {
                       onClick={() => handleRemove(person)}
                       aria-label={`Remove ${person.name}`}
                       title={`Remove ${person.name}`}
-                      className="rounded-full p-1 text-muted transition hover:bg-negative-soft hover:text-negative"
+                      className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-full p-1 text-muted transition hover:bg-negative-soft hover:text-negative"
                     >
                       <svg
                         viewBox="0 0 20 20"
