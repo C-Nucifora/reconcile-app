@@ -593,3 +593,107 @@ describe("computeBalances — itemized", () => {
     expect([...balances.values()].reduce((a, b) => a + b, 0)).toBe(0);
   });
 });
+
+describe("expense boundary regressions", () => {
+  const base: Expense = { id: "e", description: "", date: "2026-01-01", amountCents: 100, payerId: "A", splitType: "equal", members: [{ personId: "B", value: 1 }] };
+  const group = (expenses: Expense[]): Group => ({ id: "g", name: "", people: [{ id: "A", name: "A" }, { id: "B", name: "B" }], expenses });
+
+  it("breaks equal decimal exact remainders by member order", () => {
+    const exact = (amountCents: number, values: number[]) => computeExpenseShares({
+      ...base, amountCents, splitType: "exact",
+      members: values.map((value, index) => ({ personId: String(index), value })),
+    });
+    expect([...exact(2, [0.1, 1.1]).values()]).toEqual([1, 1]);
+    expect([...exact(3, [2.1, 2.1]).values()]).toEqual([2, 1]);
+    expect([...exact(5, [4.1, 2.1]).values()]).toEqual([4, 1]);
+    expect([...exact(2, [0.0000001, 1.0000001]).values()]).toEqual([1, 1]);
+    expect([...exact(1, [Number.MIN_VALUE, 0]).values()]).toEqual([1, 0]);
+  });
+
+  it("does not credit a payer when no one is allocated the expense", () => {
+    const empty = { ...base, members: [] };
+    expect(payerCredit(empty)).toBe(0);
+    expect([...computeBalances(group([empty])).values()]).toEqual([0, 0]);
+  });
+
+  it("repairs huge exact discrepancies without one operation per cent", () => {
+    const large = { ...base, splitType: "exact" as const, amountCents: Number.MAX_SAFE_INTEGER, members: [{ personId: "A", value: 0 }, { personId: "B", value: 0 }] };
+    expect([...computeExpenseShares(large).values()]).toEqual([4503599627370496, 4503599627370495]);
+    expect([...computeExpenseShares({ ...large, amountCents: 1, members: large.members.map((member) => ({ ...member, value: Number.MAX_SAFE_INTEGER })) }).values()]).toEqual([1, 0]);
+  });
+
+  it("counts repeated item assignees only once", () => {
+    expect([...computeExpenseShares({ ...base, items: [item({ amountCents: 100, assigneeIds: ["A", "A", "B"] })] }).values()]).toEqual([50, 50]);
+  });
+
+  it("rejects negative, fractional, nonfinite and unsafe expense cents", () => {
+    for (const amountCents of [-1, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(() => computeExpenseShares({ ...base, amountCents })).toThrow(RangeError);
+    }
+    for (const value of [-1, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(() => computeExpenseShares({ ...base, splitType: "exact", members: [{ personId: "A", value }] })).toThrow(RangeError);
+    }
+  });
+
+  it("rejects unknown people and duplicate split members", () => {
+    expect(() => computeBalances(group([{ ...base, payerId: "missing" }]))).toThrow(RangeError);
+    expect(() => computeBalances(group([{ ...base, members: [{ personId: "missing", value: 1 }] }]))).toThrow(RangeError);
+    expect(() => computeExpenseShares({ ...base, members: [...base.members, ...base.members] })).toThrow(RangeError);
+  });
+
+  it("checks aggregate cents and accumulates offsetting expenses exactly", () => {
+    const large = { ...base, amountCents: Number.MAX_SAFE_INTEGER };
+    expect(() => computeBalances(group([large, base]))).toThrow(RangeError);
+    const reversed = { ...large, payerId: "B", members: [{ personId: "A", value: 1 }] };
+    expect([...computeBalances(group([large, base, reversed])).values()]).toEqual([100, -100]);
+    expect(() => expenseTotalCents({ ...base, items: [item({ amountCents: Number.MAX_SAFE_INTEGER, assigneeIds: [] }), item({ amountCents: 1, assigneeIds: [] })] })).toThrow(RangeError);
+  });
+
+  it.each(["equal", "exact", "percent", "shares"] as const)("conserves zero and maximum totals for %s, with and without the payer included", (splitType) => {
+    for (const amountCents of [0, 1, Number.MAX_SAFE_INTEGER]) {
+      for (const ids of [["A", "B"], ["B"]]) {
+        const e = { ...base, splitType, amountCents, members: ids.map((personId) => ({ personId, value: 0 })) };
+        const original = structuredClone(e);
+        const shares = [...computeExpenseShares(e).values()];
+        expect(shares.every((share) => Number.isSafeInteger(share) && share >= 0)).toBe(true);
+        expect(shares.reduce((sum, share) => sum + BigInt(share), 0n)).toBe(BigInt(amountCents));
+        expect(payerCredit(e)).toBe(amountCents);
+        expect([...computeBalances(group([e])).values()].reduce((sum, net) => sum + BigInt(net), 0n)).toBe(0n);
+        expect(e).toEqual(original);
+      }
+    }
+  });
+
+  it.each(["percent", "shares"] as const)("validates %s weights even for a zero total", (splitType) => {
+    for (const value of [-1, NaN, Infinity, -Infinity]) {
+      expect(() => computeExpenseShares({ ...base, splitType, amountCents: 0, members: [{ personId: "B", value }] })).toThrow(RangeError);
+    }
+    const huge = { ...base, splitType, members: ["A", "B"].map((personId) => ({ personId, value: Number.MAX_VALUE })) };
+    expect([...computeExpenseShares(huge).values()]).toEqual([50, 50]);
+  });
+
+  it("rejects invalid item amounts whether assigned or pending", () => {
+    for (const amountCents of [-1, 0.5, NaN, Infinity, -Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+      for (const assigneeIds of [[], ["B"]]) {
+        const e = { ...base, items: [item({ amountCents, assigneeIds })] };
+        expect(() => computeExpenseShares(e)).toThrow(RangeError);
+        expect(() => expenseTotalCents(e)).toThrow(RangeError);
+        expect(() => payerCredit(e)).toThrow(RangeError);
+        if (assigneeIds.length === 0) expect(() => pendingCents(e)).toThrow(RangeError);
+      }
+    }
+  });
+
+  it("conserves maximum item totals, including duplicate assignees and pending cents", () => {
+    const e = { ...base, items: [
+      item({ id: "shared", amountCents: Number.MAX_SAFE_INTEGER - 1, assigneeIds: ["B", "A", "B"] }),
+      item({ id: "pending", amountCents: 1, assigneeIds: [] }),
+      item({ id: "zero", amountCents: 0, assigneeIds: ["B"] }),
+    ] };
+    expect([...computeExpenseShares(e)]).toEqual([["B", 4503599627370495], ["A", 4503599627370495]]);
+    expect(expenseTotalCents(e)).toBe(Number.MAX_SAFE_INTEGER);
+    expect(payerCredit(e) + pendingCents(e)).toBe(Number.MAX_SAFE_INTEGER);
+    expect([...computeBalances(group([e])).values()]).toEqual([4503599627370495, -4503599627370495]);
+    expect(() => computeBalances(group([{ ...e, items: [item({ amountCents: 0, assigneeIds: ["missing"] })] }]))).toThrow(RangeError);
+  });
+});

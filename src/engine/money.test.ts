@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseAmountToCents, formatCents, splitCents } from "./money";
+import { parseAmountToCents, formatCents, splitCents, sumCents } from "./money";
 
 describe("parseAmountToCents", () => {
   it("parses plain integers", () => {
@@ -156,6 +156,65 @@ describe("splitCents", () => {
         expect(parts).toHaveLength(w.length);
         for (const p of parts) expect(p).toBeGreaterThanOrEqual(0);
       }
+    }
+  });
+});
+
+describe("money input boundaries", () => {
+  it("sums cents at the safe boundary and rejects invalid inputs or overflow", () => {
+    expect(sumCents([])).toBe(0);
+    expect(sumCents([Number.MAX_SAFE_INTEGER - 1, 1])).toBe(Number.MAX_SAFE_INTEGER);
+    expect(() => sumCents([Number.MAX_SAFE_INTEGER, 1])).toThrow(RangeError);
+    for (const value of [-1, 0.5, NaN, Infinity, -Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(() => sumCents([value])).toThrow(RangeError);
+      expect(() => splitCents(value, [])).toThrow(RangeError);
+    }
+  });
+
+  it("round-trips every cent near the upper bound", () => {
+    for (let offset = 0; offset < 1000; offset++) {
+      const cents = Number.MAX_SAFE_INTEGER - offset;
+      expect(parseAmountToCents(formatCents(cents))).toBe(cents);
+    }
+  });
+
+  it.each(["abc12", "USD12", "$$12", "1,2", "12,34.00", "1.2,3", "1e3", "NaN", "Infinity", "-0", "90071992547409.92"])("rejects %s", (input) => {
+    expect(parseAmountToCents(input)).toBeNull();
+  });
+
+  it("parses and formats the largest safe cent amount without rounding", () => {
+    expect(parseAmountToCents("90,071,992,547,409.91")).toBe(Number.MAX_SAFE_INTEGER);
+    expect(formatCents(Number.MAX_SAFE_INTEGER)).toBe("90071992547409.91");
+    expect(formatCents(-Number.MAX_SAFE_INTEGER)).toBe("-90071992547409.91");
+  });
+
+  it.each([NaN, Infinity, -Infinity, 0.1, Number.MAX_SAFE_INTEGER + 1])("rejects invalid formatting and split totals %s", (value) => {
+    expect(() => formatCents(value)).toThrow(RangeError);
+    expect(() => splitCents(value, [1, 1])).toThrow(RangeError);
+  });
+
+  it("rejects refunds and invalid weights", () => {
+    expect(() => splitCents(-1, [1])).toThrow(RangeError);
+    for (const weight of [NaN, Infinity, -Infinity, -1]) {
+      expect(() => splitCents(100, [weight, 1])).toThrow(RangeError);
+    }
+  });
+
+  it("uses exact decimal proportions and deterministic remainder ties", () => {
+    expect(splitCents(5, [0.1, 0.2, 0.3])).toEqual([1, 2, 2]);
+    expect(splitCents(2, [1, 1, 1])).toEqual([1, 1, 0]);
+    expect(splitCents(Number.MAX_SAFE_INTEGER, [Number.MAX_VALUE, Number.MAX_VALUE])).toEqual([4503599627370496, 4503599627370495]);
+    expect(splitCents(3, [Number.MIN_VALUE, Number.MIN_VALUE])).toEqual([2, 1]);
+  });
+
+  it("conserves cents across varied totals and extreme weights", () => {
+    const totals = [0, 1, 2, 101, 1000001, Number.MAX_SAFE_INTEGER];
+    const weights = [[1], [1, 1, 1], [0, 0, 0], [0, 1, 0], [0.01, 0.99], [1e-300, 1e300, 1], [Number.MAX_VALUE, Number.MAX_VALUE, Number.MAX_VALUE]];
+    for (const total of totals) for (const ratio of weights) {
+      const parts = splitCents(total, ratio);
+      expect(parts.every((part) => Number.isSafeInteger(part) && part >= 0)).toBe(true);
+      expect(parts.reduce((sum, part) => sum + BigInt(part), 0n)).toBe(BigInt(total));
+      expect(splitCents(total, ratio)).toEqual(parts);
     }
   });
 });

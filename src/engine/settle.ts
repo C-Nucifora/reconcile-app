@@ -6,12 +6,12 @@ interface Entry {
 }
 
 /**
- * Greedy minimum cash-flow settlement.
+ * Greedy cash-flow settlement.
  *
  * Splits balances into debtors (negative net) and creditors (positive net),
  * then repeatedly settles the largest debt against the largest credit,
- * emitting a Transfer for each step. Produces at most n-1 transfers, ignores
- * residual balances smaller than one cent, and never emits a self-transfer.
+ * emitting a Transfer for each step. Produces at most n-1 transfers and never
+ * emits a self-transfer. Balances must be safe integer cents and sum to zero.
  *
  * Ordering is deterministic: at each step the largest magnitudes are matched,
  * with ties broken by id.
@@ -20,14 +20,20 @@ export function settle(balances: Map<ID, number>): Transfer[] {
   const debtors: Entry[] = [];
   const creditors: Entry[] = [];
 
-  for (const [id, value] of balances) {
-    const amount = Math.round(value);
+  let total = 0n;
+  for (const value of balances.values()) {
+    if (!Number.isSafeInteger(value)) throw new RangeError("Balances must be safe integer cents.");
+    total += BigInt(value);
+  }
+  if (total !== 0n) throw new RangeError("Balances must sum to zero.");
+
+  for (const [id, amount] of balances) {
     if (amount <= -1) {
       debtors.push({ id, amount: -amount }); // store positive magnitude owed
     } else if (amount >= 1) {
       creditors.push({ id, amount });
     }
-    // |amount| < 1 cent is treated as settled and ignored.
+
   }
 
   const byAmountThenId = (a: Entry, b: Entry) => {
