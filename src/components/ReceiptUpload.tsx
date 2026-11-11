@@ -10,6 +10,7 @@ import {
 interface ReceiptUploadProps {
   imageId?: ID;
   onChange: (id?: ID) => void;
+  onBusyChange?: (busy: boolean) => void;
 }
 
 /**
@@ -19,7 +20,7 @@ interface ReceiptUploadProps {
  * view (larger lightbox) and remove actions. Failures (quota, decode, missing
  * blob) degrade gracefully: the expense can still be saved without a photo.
  */
-export default function ReceiptUpload({ imageId, onChange }: ReceiptUploadProps) {
+export default function ReceiptUpload({ imageId, onChange, onBusyChange }: ReceiptUploadProps) {
   const mountedRef = useRef(false);
   const selectingRef = useRef(false);
   const draftImagesRef = useRef(new Set<ID>());
@@ -28,9 +29,10 @@ export default function ReceiptUpload({ imageId, onChange }: ReceiptUploadProps)
     const drafts = draftImagesRef.current;
     return () => {
       mountedRef.current = false;
+      onBusyChange?.(false);
       for (const id of drafts) void deleteUnusedImage(id);
     };
-  }, []);
+  }, [onBusyChange]);
   const inputRef = useRef<HTMLInputElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [thumbnail, setThumbnail] = useState<{ imageId?: ID; url: string | null } | null>(null);
@@ -84,6 +86,7 @@ export default function ReceiptUpload({ imageId, onChange }: ReceiptUploadProps)
     if (!file || selectingRef.current) return;
     selectingRef.current = true;
 
+    onBusyChange?.(true);
     setBusy(true);
     setError(null);
     try {
@@ -97,7 +100,10 @@ export default function ReceiptUpload({ imageId, onChange }: ReceiptUploadProps)
       if (mountedRef.current) setError("Couldn't add the photo. Use a JPEG, PNG or WebP up to 10 MB and check available browser storage. You can save without a photo.");
     } finally {
       selectingRef.current = false;
-      if (mountedRef.current) setBusy(false);
+      if (mountedRef.current) {
+        setBusy(false);
+        onBusyChange?.(false);
+      }
     }
   }
 

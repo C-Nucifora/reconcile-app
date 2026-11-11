@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef, useState } from "react";
+import { useCallback, useId, useMemo, useRef, useState } from "react";
 import type { Expense, ExpenseItem, ID, SplitMember } from "../types";
 import { useApp } from "../state/AppContext";
 import { formatCents, parseAmountToCents } from "../engine/money";
@@ -78,6 +78,19 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
   const [receiptImageId, setReceiptImageId] = useState<ID | undefined>(
     editingExpense?.receiptImageId,
   );
+  const receiptImageIdRef = useRef(receiptImageId);
+  const receiptPending = useRef(false);
+  const [receiptBusy, setReceiptBusy] = useState(false);
+  const handleReceiptBusyChange = useCallback((busy: boolean) => {
+    receiptPending.current = busy;
+    setReceiptBusy(busy);
+  }, []);
+
+  function handleReceiptChange(id?: ID) {
+    receiptImageIdRef.current = id;
+    setReceiptImageId(id);
+    submitted.current = false;
+  }
 
   const [split, setSplit] = useState<SplitEditorValue | null>(() => {
     if (editingExpense && editingExpense.members.length > 0) {
@@ -159,6 +172,7 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
     (itemized && itemDrafts.some((item) => item.name.trim().length > MAX_TEXT_LENGTH));
 
   const canSubmit =
+    !receiptBusy &&
     !totalTooLarge &&
     !textTooLong &&
     people.length > 0 &&
@@ -180,6 +194,7 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
     setPayerId(people[0]?.id ?? "");
     setDate(today());
     setItemized(false);
+    receiptImageIdRef.current = undefined;
     setReceiptImageId(undefined);
     setSplit(null);
     setItemDrafts([emptyItemDraft()]);
@@ -206,7 +221,9 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!canSubmit || !activeGroup || submitted.current) return;
+    // File selection can precede a submit before React renders the busy state.
+    if (receiptPending.current || !canSubmit || !activeGroup || submitted.current) return;
+    const currentReceiptImageId = receiptImageIdRef.current;
 
     let expense: Expense;
     if (itemized) {
@@ -222,7 +239,7 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
         splitType: "equal",
         members: [],
         items,
-        ...(receiptImageId ? { receiptImageId } : {}),
+        ...(currentReceiptImageId ? { receiptImageId: currentReceiptImageId } : {}),
       };
     } else {
       if (amountCents === null) return;
@@ -234,7 +251,7 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
         date,
         splitType: currentSplit.splitType,
         members: currentMembers.map((m) => ({ ...m })),
-        ...(receiptImageId ? { receiptImageId } : {}),
+        ...(currentReceiptImageId ? { receiptImageId: currentReceiptImageId } : {}),
       };
     }
 
@@ -422,7 +439,17 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
         </div>
       )}
 
-      <ReceiptUpload key={receiptDraft} imageId={receiptImageId} onChange={setReceiptImageId} />
+      <ReceiptUpload
+        key={receiptDraft}
+        imageId={receiptImageId}
+        onChange={handleReceiptChange}
+        onBusyChange={handleReceiptBusyChange}
+      />
+      {receiptBusy && (
+        <p role="status" className="text-sm text-muted">
+          Wait for the receipt photo to finish before saving the expense.
+        </p>
+      )}
 
       {(textTooLong || submitError) && (
         <p role="alert" className="text-sm text-negative">
