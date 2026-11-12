@@ -91,3 +91,17 @@ The reviewer did not run full tests, browser workflows or PDF rendering.
 Detailed fictional workflow and PDF evidence is recorded in
 [browser-verification.md](browser-verification.md) and
 [pdf-verification.md](pdf-verification.md).
+
+
+## Final existing-finding corrections, 13 November 2026
+
+| Finding | Severity and reproduction | Expected behavior and root cause | Fix and evidence |
+| --- | --- | --- | --- |
+| R8 theme snapshot | Low. Change OS preference between render and listener registration. | System mode reflects the current OS. The passive subscription did not reread the snapshot. | React external-store subscription. Existing round8-events regression reproduced the failure before correction. |
+| R8 corrupt theme startup | Low. Invalid stored choice with dark OS. | Startup and provider agree. Startup treated invalid strings differently. | Startup uses the provider's system default. Existing round8-events regression reproduced the failure. |
+| R8 receipt ABA | Low. Resolve A, change to held B, return to A in the same component. Ordinary UI reachability remains unproven. | Never render a revoked URL. ID equality accepted an earlier load's result. | Compare per-load identities in viewer and upload. Two existing round8-viewer regressions reproduced the failure. No blob deletion or data loss was established. |
+| PDF heading extractor | Test defect. Paginated heading follows an empty graphics dash array. | Decode the text using its actual font. TJ regex consumed across a closing bracket and swallowed Tf. | Match a single bracket pair. Independent PyMuPDF reads the unchanged PDF heading and first person correctly. Content assertions remain unchanged. |
+
+Earlier no-push statements describe their historical checkpoints. The final
+instruction explicitly authorizes normal topic-branch push and a draft PR.
+No merge, deployment, protection changes or production changes are authorized.

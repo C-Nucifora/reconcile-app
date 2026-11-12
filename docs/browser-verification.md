@@ -40,3 +40,36 @@ Verified on 12 November 2026 Brisbane time using fictional data and T3's server 
 | Final requests and cleanup | Page resources, PDF chunks and both TTF fonts used only 127.0.0.1:43189. Closed all owned tabs and the same-context popup. Stopped the preview and confirmed no listener remains on 43189. |
 
 Browser assertions cover accessibility semantics and keyboard behavior. No real screen reader, physical mobile device or universal browser matrix was available. Receipt-ID replacement and late URL revocation received source review; all async timing permutations were not exercised in-browser. The final section-heading spacing is verified by the PDF regression suite and a final production export.
+
+## Round 1 native follow-up
+
+A fresh incognito production-browser batch passed on 12 November 2026 after the
+checkpoint. Vite listened only on 127.0.0.1:43189. The shared heavy lock was held
+for the bounded related browser batch, then released before compiler checks.
+
+- A 10,001-character person name was refused, its input retained and an alert
+  exposed. Correction saved normally. An invalid rename survived actual blur;
+  correction saved and returned focus to its rename button.
+- Actual group prompts refused an oversized name, retained all 10,001 characters
+  as the retry default, survived cancellation and accepted a corrected group.
+  Preview status truncates the displayed default to 4,000 characters; a wrapper
+  measured the original argument before invoking the unchanged native prompt.
+- Holding native createImageBitmap completion blocked add submission and kept
+  the draft. Releasing it decoded/reencoded the fictional image and persisted
+  the expense with its receipt exactly once.
+- Holding the application's native IndexedDB write-completion callback blocked
+  edit submission. Release permitted the edit and persisted the replacement
+  receipt. The transaction itself completed normally; this checks a delayed
+  application completion, not delayed disk durability.
+- A rejected decoder exposed recovery guidance and kept the expense draft. It
+  could then be saved without a photo.
+- Finishing an old group's upload could neither unblock the new group's pending
+  upload nor replace its draft. The new group saved its own completed receipt.
+- Reload retained expense counts 2, 1 and 0 across the three fictional groups.
+  Both referenced receipts were native IndexedDB JPEG blobs of 759 bytes.
+
+One initial write probe targeted the add form's file input while submitting the
+edit form. Its failure was a fixture error. Root corrected the selector and
+reran the edit sequence successfully; it is retained as such in external logs.
+All owned tabs and the preview process were closed, and no listener remained
+on port 43189. No tunnel, container, deployment or external data write was used.

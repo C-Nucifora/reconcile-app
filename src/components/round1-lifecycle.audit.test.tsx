@@ -1,4 +1,4 @@
-import { act, createElement, useEffect, type ReactNode } from "react";
+import { act, createElement, StrictMode, useEffect, type ReactNode } from "react";
 import Reconciler from "@react-pdf/reconciler";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppProvider, useApp } from "../state/AppContext";
@@ -47,13 +47,14 @@ const images = vi.hoisted(() => ({
 vi.mock("../lib/imageStore", () => images);
 
 const mounts: { unmount: () => Promise<void> }[] = [];
-function mount(element: ReactNode) {
+function mount(element: ReactNode, strict = false) {
   const host: Host = { type: "ROOT", props: {}, children: [], focus: vi.fn() };
   const root = renderer.createContainer(host);
   let current = element;
   async function update(next = current) {
     current = next;
-    await act(async () => { renderer.updateContainer(createElement("audit-root", null, current), root, null, () => {}); });
+    const tree = createElement("audit-root", null, current);
+    await act(async () => { renderer.updateContainer(strict ? createElement(StrictMode, null, tree) : tree, root, null, () => {}); });
   }
   function nodes(predicate: (node: Host) => boolean) {
     const found: Host[] = [];
@@ -111,6 +112,13 @@ function Probe() {
   useEffect(() => { observed = app; }, [app]);
   return null;
 }
+function EffectReplayProbe({ onEffect }: { onEffect: (phase: "setup" | "cleanup") => void }) {
+  useEffect(() => {
+    onEffect("setup");
+    return () => { onEffect("cleanup"); };
+  }, [onEffect]);
+  return null;
+}
 function Workspace({ edit = false }: { edit?: boolean }) {
   const { activeGroup } = useApp();
   return <><GroupSwitcher /><div key={activeGroup?.id}><PeopleManager /><ExpenseForm editingExpense={edit ? activeGroup?.expenses[0] : undefined} /></div><Probe /></>;
@@ -134,10 +142,12 @@ afterEach(async () => {
   for (const ui of mounts.splice(0)) await ui.unmount();
   vi.unstubAllGlobals();
 });
-async function app(edit = false) {
+async function app(edit = false, strict = false) {
   if (edit) { const state = initial(); state.groups[0].expenses = [expense]; bytes = JSON.stringify(state); }
-  const ui = mount(<AppProvider><Workspace edit={edit} /></AppProvider>);
+  const effects = vi.fn();
+  const ui = mount(<AppProvider><Workspace edit={edit} />{strict && <EffectReplayProbe onEffect={effects} />}</AppProvider>, strict);
   await ui.update();
+  if (strict) expect(effects.mock.calls, "Harness limitation: StrictMode must replay effects before these upload checks establish replay coverage").toEqual([["setup"], ["cleanup"], ["setup"]]);
   return ui;
 }
 async function fill(ui: Mounted) {
@@ -156,6 +166,78 @@ async function select(ui: Mounted) {
 }
 
 describe("round1 lifecycle audit using real React effects and provider", () => {
+  it("establishes StrictMode effect replay in the installed reconciler", async () => {
+    const effects = vi.fn();
+    const ui = mount(<EffectReplayProbe onEffect={effects} />, true);
+    await ui.update();
+    expect(effects.mock.calls, "Harness limitation, not a product failure: the installed reconciler must replay effects").toEqual([["setup"], ["cleanup"], ["setup"]]);
+    await ui.unmount();
+    expect(effects.mock.calls).toEqual([["setup"], ["cleanup"], ["setup"], ["cleanup"]]);
+  });
+
+  it.each(["compression", "write"])("preserves one receipt through held %s after established StrictMode replay", async (stage) => {
+    const pending = deferred<Blob | string>();
+    const receiptId = "fictional-new-receipt";
+    if (stage === "compression") images.compressImage.mockReturnValueOnce(pending.promise);
+    else images.putImage.mockReturnValueOnce(pending.promise);
+    const ui = await app(false, true);
+    await fill(ui);
+    const form = ui.one((n) => n.type === "form" && !!n.props["aria-label"]);
+    const capturedSubmit = form.props.onSubmit as (event: { preventDefault: () => void }) => void;
+    const upload = await select(ui);
+    expect(button(ui, "Add expense").props.disabled).toBe(true);
+    await event(() => capturedSubmit({ preventDefault: vi.fn() }));
+    await submit(ui);
+    expect(observed.activeGroup!.expenses).toEqual([]);
+    expect(JSON.parse(bytes).groups[0].expenses).toEqual([]);
+    expect(field(ui, "-description").props.value).toBe("Fictional lunch");
+    await event(() => pending.resolve(stage === "compression" ? new Blob(["fictional JPEG"]) : receiptId));
+    await upload.finish();
+    expect(observed.activeGroup!.expenses).toEqual([]);
+    await event(() => {
+      capturedSubmit({ preventDefault: vi.fn() });
+      capturedSubmit({ preventDefault: vi.fn() });
+    });
+    expect(observed.activeGroup!.expenses).toHaveLength(1);
+    expect(observed.activeGroup!.expenses[0].receiptImageId).toBe(receiptId);
+    expect(JSON.parse(bytes).groups[0].expenses).toEqual(observed.activeGroup!.expenses);
+    expect(images.compressImage).toHaveBeenCalledOnce();
+    expect(images.putImage).toHaveBeenCalledOnce();
+    expect(images.commitImageReferences).toHaveBeenCalledWith(new Set([receiptId]));
+    expect(images.deleteUnusedImage).toHaveBeenCalledWith(receiptId);
+    expect(field(ui, "-description").props.value).toBe("");
+    expect(button(ui, "Add photo").props.disabled).toBe(false);
+    await fill(ui);
+    await submit(ui);
+    expect(observed.activeGroup!.expenses).toHaveLength(2);
+    expect(observed.activeGroup!.expenses[1].receiptImageId).toBeUndefined();
+  });
+
+  it.each(["compression", "write"])("cleans up held %s after a StrictMode group switch without corrupting the new draft", async (stage) => {
+    const pending = deferred<Blob | string>();
+    if (stage === "compression") images.compressImage.mockReturnValueOnce(pending.promise);
+    else images.putImage.mockReturnValueOnce(pending.promise);
+    const ui = await app(false, true);
+    await fill(ui);
+    const upload = await select(ui);
+    await event(() => invoke(button(ui, "Fictional other"), "onClick"));
+    await change(ui, field(ui, "-description"), "Fictional new draft");
+    await change(ui, field(ui, "-amount"), "7.00");
+    await event(() => pending.resolve(stage === "compression" ? new Blob(["fictional JPEG"]) : "fictional-late-receipt"));
+    await upload.finish();
+    expect(observed.state.groups.flatMap((group) => group.expenses)).toEqual([]);
+    expect(field(ui, "-description").props.value).toBe("Fictional new draft");
+    expect(field(ui, "-amount").props.value).toBe("7.00");
+    expect(button(ui, "Add photo").props.disabled).toBe(false);
+    if (stage === "compression") expect(images.putImage).not.toHaveBeenCalled();
+    else expect(images.deleteUnusedImage).toHaveBeenCalledExactlyOnceWith("fictional-late-receipt");
+    await submit(ui);
+    expect(observed.state.groups[0].expenses).toEqual([]);
+    expect(observed.activeGroup!.expenses).toHaveLength(1);
+    expect(observed.activeGroup!.expenses[0]).toMatchObject({ description: "Fictional new draft", amountCents: 700 });
+    expect(observed.activeGroup!.expenses[0].receiptImageId).toBeUndefined();
+  });
+
   it.each(["compression", "write"])("does not silently discard a selected receipt when adding during %s", async (stage) => {
     const pending = deferred<Blob | string>();
     if (stage === "compression") images.compressImage.mockReturnValueOnce(pending.promise);
