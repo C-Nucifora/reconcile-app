@@ -2,6 +2,7 @@ import { useId, useMemo, useState } from "react";
 import type { Person, SplitType, SplitMember } from "../types";
 import { splitCents, formatCents, parseAmountToCents } from "../engine/money";
 import { isSplitValid } from "./expenseValidation";
+import { personLabels } from "../lib/personLabels";
 
 export interface SplitEditorValue {
   splitType: SplitType;
@@ -63,6 +64,7 @@ export default function SplitEditor({
   const { splitType, members } = value;
   const validationId = useId();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const labels = useMemo(() => personLabels(people), [people]);
 
   const includedIds = useMemo(
     () => new Set(members.map((m) => m.personId)),
@@ -152,7 +154,11 @@ export default function SplitEditor({
       // exact: interpret as a currency amount -> cents
       value = parseAmountToCents(raw) ?? NaN;
     } else {
-      const num = /^(?:\d+(?:\.\d*)?|\.\d+)$/.test(raw.trim()) ? Number(raw) : NaN;
+      const text = raw.trim();
+      const syntax = splitType === "shares" ? /^\d+(?:\.0*)?$/ : /^(?:\d+(?:\.\d*)?|\.\d+)$/;
+      let num = syntax.test(text) ? Number(text) : NaN;
+      // Reject source fractions erased by Number conversion, including 100% boundary crossings.
+      if (splitType === "percent" && Number.isInteger(num) && /[1-9]/.test(text.split(".")[1] ?? "")) num = NaN;
       value = Number.isFinite(num) ? num : NaN;
     }
     onChange({
@@ -189,6 +195,8 @@ export default function SplitEditor({
 
       <ul aria-label="Split participants" className="divide-y divide-line rounded-lg border border-line">
         {people.map((person) => {
+          const label = labels.get(person.id);
+          const draft = Object.prototype.hasOwnProperty.call(drafts, person.id) ? drafts[person.id] : undefined;
           const included = includedIds.has(person.id);
           const member = members.find((m) => m.personId === person.id);
           const share = shares.get(person.id) ?? 0;
@@ -209,7 +217,7 @@ export default function SplitEditor({
                     "min-w-0 [overflow-wrap:anywhere] text-sm " + (included ? "text-fg" : "text-muted")
                   }
                 >
-                  {person.name}
+                  {label}
                 </span>
               </label>
 
@@ -219,10 +227,10 @@ export default function SplitEditor({
                   <input
                     type="text"
                     inputMode="decimal"
-                    aria-label={`Exact amount for ${person.name}`}
+                    aria-label={`Exact amount for ${label}`}
                     aria-invalid={member ? !Number.isSafeInteger(member.value) || member.value < 0 : false}
                     aria-describedby={validationId}
-                    value={drafts[person.id] ?? (member && Number.isSafeInteger(member.value) ? formatCents(member.value) : "")}
+                    value={draft ?? (member && Number.isSafeInteger(member.value) ? formatCents(member.value) : "")}
                     onChange={(e) =>
                       setMemberValue(person.id, e.target.value, true)
                     }
@@ -236,10 +244,10 @@ export default function SplitEditor({
                   <input
                     type="text"
                     inputMode="decimal"
-                    aria-label={`Percentage for ${person.name}`}
+                    aria-label={`Percentage for ${label}`}
                     aria-invalid={member ? !Number.isFinite(member.value) || member.value < 0 || member.value > 100 : false}
                     aria-describedby={validationId}
-                    value={drafts[person.id] ?? (member && Number.isFinite(member.value) ? member.value.toString() : "")}
+                    value={draft ?? (member && Number.isFinite(member.value) ? member.value.toString() : "")}
                     onChange={(e) =>
                       setMemberValue(person.id, e.target.value, false)
                     }
@@ -254,10 +262,10 @@ export default function SplitEditor({
                   <input
                     type="text"
                     inputMode="numeric"
-                    aria-label={`Shares for ${person.name}`}
+                    aria-label={`Shares for ${label}`}
                     aria-invalid={member ? !Number.isSafeInteger(member.value) || member.value <= 0 : false}
                     aria-describedby={validationId}
-                    value={drafts[person.id] ?? (member && Number.isFinite(member.value) ? member.value.toString() : "")}
+                    value={draft ?? (member && Number.isFinite(member.value) ? member.value.toString() : "")}
                     onChange={(e) =>
                       setMemberValue(person.id, e.target.value, false)
                     }

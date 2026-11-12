@@ -3,6 +3,7 @@ import type { Expense, ExpenseItem, ID, SplitMember } from "../types";
 import { useApp } from "../state/AppContext";
 import { formatCents, parseAmountToCents } from "../engine/money";
 import { newId } from "../lib/id";
+import { personLabels } from "../lib/personLabels";
 import SplitEditor, { type SplitEditorValue } from "./SplitEditor";
 import ItemsEditor from "./ItemsEditor";
 import {
@@ -47,6 +48,7 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
   const { dispatch, activeGroup } = useApp();
   const formId = useId();
   const people = useMemo(() => activeGroup?.people ?? [], [activeGroup?.people]);
+  const labels = useMemo(() => personLabels(people), [people]);
   const submitted = useRef(false);
   const descriptionRef = useRef<HTMLInputElement>(null);
   const isEditing = Boolean(editingExpense);
@@ -60,7 +62,7 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
     editingExpense?.description ?? "",
   );
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [receiptDraft, setReceiptDraft] = useState(0);
+  const [draftKey, setDraftKey] = useState(0);
   const [amountInput, setAmountInput] = useState(() =>
     editingExpense && (!editingExpense.items || editingExpense.items.length === 0)
       ? formatCents(editingExpense.amountCents)
@@ -188,7 +190,7 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
 
   function resetForAdd() {
     setSubmitError(null);
-    setReceiptDraft((value) => value + 1);
+    setDraftKey((value) => value + 1);
     setDescription("");
     setAmountInput("");
     setPayerId(people[0]?.id ?? "");
@@ -387,7 +389,7 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
           >
             {people.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.name}
+                {labels.get(p.id)}
               </option>
             ))}
           </select>
@@ -418,7 +420,7 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
         </p>
       )}
 
-      {itemized ? (
+      {itemized && (
         <div className="space-y-2">
           <p className={labelClass}>Items</p>
           <ItemsEditor
@@ -427,20 +429,21 @@ export default function ExpenseForm({ editingExpense, onDone }: ExpenseFormProps
             onChange={setItemDrafts}
           />
         </div>
-      ) : (
-        <div className="space-y-2">
-          <p className={labelClass}>Split between</p>
-          <SplitEditor
-            amountCents={amountCents ?? 0}
-            people={people}
-            value={currentSplit}
-            onChange={setSplit}
-          />
-        </div>
       )}
 
+      <fieldset hidden={itemized} disabled={itemized} className="min-w-0 space-y-2 border-0 p-0">
+        <p className={labelClass}>Split between</p>
+        <SplitEditor
+          key={draftKey}
+          amountCents={amountCents ?? 0}
+          people={people}
+          value={currentSplit}
+          onChange={setSplit}
+        />
+      </fieldset>
+
       <ReceiptUpload
-        key={receiptDraft}
+        key={draftKey}
         imageId={receiptImageId}
         onChange={handleReceiptChange}
         onBusyChange={handleReceiptBusyChange}

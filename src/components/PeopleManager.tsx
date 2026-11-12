@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { useApp } from "../state/AppContext";
 import { MAX_TEXT_LENGTH } from "../state/storage";
 import type { Person } from "../types";
+import { personLabels } from "../lib/personLabels";
 
 export default function PeopleManager() {
   const { activeGroup, dispatch } = useApp();
@@ -13,6 +14,10 @@ export default function PeopleManager() {
   const restoreFocus = useRef<string | null>(null);
   const added = useRef(false);
   const newNameRef = useRef<HTMLInputElement>(null);
+  const labels = useMemo(
+    () => personLabels(activeGroup?.people ?? []),
+    [activeGroup?.people],
+  );
 
   // personId -> whether they appear in any expense of the active group.
   const involvedIds = useMemo(() => {
@@ -91,7 +96,7 @@ export default function PeopleManager() {
   function handleRemove(person: Person) {
     if (involvedIds.has(person.id)) {
       const ok = window.confirm(
-        `${person.name} appears in one or more expenses in this group. ` +
+        `${labels.get(person.id)} appears in one or more expenses in this group. ` +
           `Expenses they paid will be deleted. Their other shares will be redistributed, and item assignments may become pending. ` +
           `Remove anyway?`,
       );
@@ -153,6 +158,7 @@ export default function PeopleManager() {
       ) : (
         <ul className="flex flex-wrap gap-2">
           {people.map((person) => {
+            const label = labels.get(person.id);
             const isEditing = editingId === person.id;
             return (
               <li key={person.id}>
@@ -167,7 +173,7 @@ export default function PeopleManager() {
                       type="text"
                       value={editName}
                       autoFocus
-                      aria-label={`Rename ${person.name}`}
+                      aria-label={`Rename ${label}`}
                       onChange={(e) => {
                         setNameError(null);
                         setEditName(e.target.value);
@@ -216,18 +222,18 @@ export default function PeopleManager() {
                           node.focus();
                         }
                       }}
-                      aria-label={`Rename ${person.name}`}
+                      aria-label={`Rename ${label}`}
                       onClick={() => startEditing(person)}
                       title="Rename"
                       className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent max-w-[12rem] truncate font-medium text-fg transition hover:text-accent"
                     >
-                      {person.name}
+                      {label}
                     </button>
                     <button
                       type="button"
                       onClick={() => handleRemove(person)}
-                      aria-label={`Remove ${person.name}`}
-                      title={`Remove ${person.name}`}
+                      aria-label={`Remove ${label}`}
+                      title={`Remove ${label}`}
                       className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-full p-1 text-muted transition hover:bg-negative-soft hover:text-negative"
                     >
                       <svg

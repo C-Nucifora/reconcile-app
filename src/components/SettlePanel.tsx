@@ -3,17 +3,15 @@ import { useApp } from "../state/AppContext";
 import { computeBalances } from "../engine/balances";
 import { settle } from "../engine/settle";
 import { formatCents } from "../engine/money";
+import { personLabels } from "../lib/personLabels";
 
 export function SettlePanel() {
   const { activeGroup } = useApp();
 
-  const nameOf = useMemo(() => {
-    const map = new Map<string, string>();
-    if (activeGroup) {
-      for (const person of activeGroup.people) map.set(person.id, person.name);
-    }
-    return map;
-  }, [activeGroup]);
+  const nameOf = useMemo(
+    () => personLabels(activeGroup?.people ?? []),
+    [activeGroup?.people],
+  );
 
   const transfers = useMemo(() => {
     if (!activeGroup) return [];

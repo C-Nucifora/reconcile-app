@@ -8,6 +8,7 @@ import {
 } from "../engine/balances";
 import ExpenseForm from "./ExpenseForm";
 import ReceiptViewer from "./ReceiptViewer";
+import { personLabels } from "../lib/personLabels";
 
 const SPLIT_LABEL: Record<Expense["splitType"], string> = {
   equal: "split equally",
@@ -44,11 +45,7 @@ export default function ExpenseList() {
   const listRef = useRef<HTMLUListElement>(null);
   const focusEmpty = useRef(false);
 
-  const nameById = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const p of people) map.set(p.id, p.name);
-    return map;
-  }, [people]);
+  const nameById = useMemo(() => personLabels(people), [people]);
 
   // Newest first: by date descending, then by insertion order descending.
   const ordered = useMemo(() => {

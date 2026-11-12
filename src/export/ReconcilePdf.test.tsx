@@ -55,12 +55,20 @@ describe("ReconcilePdf", () => {
 
 // Read PDFKit's page streams and embedded ToUnicode maps, rather than counting
 // text operators, which cannot tell whether the right content survived a wrap.
-async function pdfPages(buffer: Uint8Array): Promise<string[]> {
+async function pdfPages(buffer: Uint8Array, objectBoundaries = false): Promise<string[]> {
   const source = Array.from(buffer, (byte) => String.fromCharCode(byte)).join("");
   const objects = new Map<string, { raw: string; stream: string }>();
   for (const match of source.matchAll(/(\d+) 0 obj\b([\s\S]*?)endobj/g)) {
     const raw = match[2];
-    const stream = raw.match(/stream\r?\n([\s\S]*?)\r?\nendstream/)?.[1];
+    const streamHeader = /\bstream\r?\n/.exec(raw);
+    let stream: string | undefined;
+    if (streamHeader) {
+      // Stream bytes can end in CR or contain delimiters; PDFKit supplies their exact length.
+      const length = Number(raw.match(/\/Length\s+(\d+)\b/)![1]);
+      const start = match.index! + match[1].length + " 0 obj".length + streamHeader.index + streamHeader[0].length;
+      stream = source.slice(start, start + length);
+      expect(stream.length).toBe(length);
+    }
     let decoded = "";
     if (stream) {
       const bytes = Uint8Array.from(stream, (character) => character.charCodeAt(0));
@@ -89,7 +97,11 @@ async function pdfPages(buffer: Uint8Array): Promise<string[]> {
     const content = objects.get(page.raw.match(/\/Contents (\d+) 0 R/)![1])!.stream;
     let currentFont = "";
     let text = "";
-    for (const operation of content.matchAll(/\/(F\d+) [\d.]+ Tf|\[([\s\S]*?)\]\s*TJ/g)) {
+    for (const operation of content.matchAll(/\/(F\d+) [\d.]+ Tf|\[([^\]]*)\]\s*TJ|\bET\b/g)) {
+      if (operation[0] === "ET") {
+        if (objectBoundaries) text += "\n";
+        continue;
+      }
       if (operation[1]) { currentFont = operation[1]; continue; }
       for (const encoded of operation[2].matchAll(/<([a-f\d]+)>/gi)) {
         for (const hex of encoded[1].match(/.{4}/g) ?? []) {
@@ -114,6 +126,25 @@ it("preserves amounts, pending details, literal untrusted text and Unicode names
   }
   expect(buffer.toString()).not.toMatch(/\/(?:JavaScript|JS|URI|EmbeddedFile|Subtype \/Image)\b/);
   expect(buffer.toString()).toContain("Bitstream");
+}, 30000);
+
+it("prints distinct payment parties for duplicate names and literal suffix collisions", async () => {
+  const group: Group = {
+    id: "fictional-names", name: "Fictional shared names",
+    people: [{ id: "a", name: "Alex" }, { id: "b", name: "Alex" }, { id: "c", name: "Alex (1)" }],
+    expenses: [{ id: "fictional-meal", description: "Fictional meal", amountCents: 100,
+      payerId: "a", date: "2026-11-12", splitType: "exact", members: [{ personId: "b", value: 100 }] }],
+  };
+  const data = buildReport(group, {
+    sections: { settleUp: true, expenses: true, perPerson: true }, generatedDate: "2026-11-12",
+  });
+  const buffer = await renderToBuffer(<ReconcilePdf data={data} />);
+  const text = (await pdfPages(buffer)).join("\n");
+  expect(text).toContain("Alex (3) pays Alex (2)");
+  expect(text).toContain("paid by Alex (2)");
+  expect(text).toContain("Alex (1)");
+  expect(text).toContain("$1.00");
+  expect(group.people.map((person) => person.name)).toEqual(["Alex", "Alex", "Alex (1)"]);
 }, 30000);
 
 it("paginates long expenses and a single large item list without losing rows", async () => {
@@ -170,3 +201,85 @@ it("keeps the per person heading with its first person after long settlement nam
   const headingPage = pages.find((page) => page.includes("Per person"));
   expect(headingPage).toContain("Alexnet $13.56paid $25.48");
 }, 30000);
+
+describe("round4 PDF selection and paragraph audit", () => {
+  it.each(Array.from({ length: 8 }, (_, bits) => ({
+    settleUp: Boolean(bits & 1), expenses: Boolean(bits & 2), perPerson: Boolean(bits & 4),
+  })))("prints only selected sections and their amounts for %j", async (sections) => {
+    const group: Group = {
+      id: "fictional-r4-sections", name: "FictionalR4Header",
+      people: [{ id: "payer", name: "FictionalR4Payer" }, { id: "debtor", name: "FictionalR4Debtor" }],
+      expenses: [{
+        id: "fictional-r4-expense", description: "FictionalR4Contribution", date: "2026-11-12",
+        payerId: "payer", amountCents: 579, splitType: "equal", members: [],
+        receiptImageId: "fictional-r4-private-receipt-never-print",
+        items: [
+          { id: "assigned", name: "FictionalR4Assigned", amountCents: 123, assigneeIds: ["debtor"] },
+          { id: "pending", name: "FictionalR4Pending", amountCents: 456, assigneeIds: [] },
+        ],
+      }],
+    };
+    const before = structuredClone(group);
+    const data = buildReport(group, { sections, generatedDate: "2026-11-12" });
+    const buffer = await renderToBuffer(<ReconcilePdf data={data} />);
+    const pages = await pdfPages(buffer);
+    // Preserve text-object boundaries so numeric footers cannot merge with an amount.
+    const amounts = (await pdfPages(buffer, true)).join("\n");
+    expect(pages).toHaveLength(1);
+    const text = pages[0];
+    expect(text).toContain("FictionalR4HeaderGenerated 2026-11-12");
+    for (const [selected, markers] of [
+      [sections.settleUp, ["Settle up", "FictionalR4Debtor pays FictionalR4Payer"]],
+      [sections.expenses, ["Expenses", "FictionalR4Assigned (FictionalR4Debtor)",
+        "FictionalR4Pending (pending)", "$5.79", "$4.56 pending assignment, excluded from balances."]],
+      [sections.perPerson, ["Per person", "paid $1.23 · owed $0.00", "paid $0.00 · owed $1.23"]],
+    ] as const) {
+      for (const marker of markers) expect(text.includes(marker), marker).toBe(selected);
+    }
+    // The same debt appears in transfer, balance, item and person details.
+    expect(amounts.match(/\$1\.23(?!\d)/g) ?? []).toHaveLength(
+      2 * Number(sections.settleUp) + Number(sections.expenses) + 4 * Number(sections.perPerson),
+    );
+    expect(amounts.match(/\$-1\.23(?!\d)/g) ?? []).toHaveLength(Number(sections.settleUp) + Number(sections.perPerson));
+    expect(amounts.match(/\$4\.56(?!\d)/g) ?? []).toHaveLength(2 * Number(sections.expenses));
+    expect(text.match(/FictionalR4Contribution/g) ?? []).toHaveLength(Number(sections.expenses) + Number(sections.perPerson));
+    expect(text).not.toContain("fictional-r4-private-receipt-never-print");
+    expect(text).toContain("1 / 1");
+    expect(group).toEqual(before);
+  }, 20000);
+
+  it("retains every word of supported 10000-character names and pending paragraphs across pages", async () => {
+    const paragraphs = ["FictionalNameR4", "FictionalDescR4", "FictionalItemR4"].map((prefix) => {
+      const words = Array.from({ length: 500 }, (_, index) => `${prefix}${index.toString().padStart(4, "0")}`);
+      const text = `${words.join(" ")}.`;
+      expect(text).toHaveLength(10000);
+      return { prefix, words, text };
+    });
+    const group: Group = {
+      id: "fictional-r4-paragraphs", name: paragraphs[0].text,
+      people: [{ id: "payer", name: "Fictional paragraph payer" }],
+      expenses: [{
+        id: "fictional-r4-pending-paragraph", description: paragraphs[1].text,
+        date: "2026-11-12", payerId: "payer", amountCents: 791, splitType: "equal", members: [],
+        items: [{ id: "pending", name: paragraphs[2].text, amountCents: 791, assigneeIds: [] }],
+      }],
+    };
+    const data = buildReport(group, {
+      sections: { settleUp: false, expenses: true, perPerson: false }, generatedDate: "2026-11-12",
+    });
+    const buffer = await renderToBuffer(<ReconcilePdf data={data} />);
+    const pages = await pdfPages(buffer);
+    const amounts = (await pdfPages(buffer, true)).join("\n");
+    expect(pages.length).toBeGreaterThan(3);
+    const text = pages.join("\n");
+    for (const paragraph of paragraphs) {
+      expect(text.match(new RegExp(`${paragraph.prefix}\\d{4}`, "g"))).toEqual(paragraph.words);
+    }
+    expect(amounts.match(/\$7\.91(?!\d)/g)).toHaveLength(3);
+    expect(text).toContain("$7.91 pending assignment, excluded from balances.");
+    expect(text.match(/\(pending\)/g)).toHaveLength(1);
+    expect(text).not.toContain("Settle up");
+    expect(text).not.toContain("Per person");
+    pages.forEach((page, index) => expect(page).toContain(`${index + 1} / ${pages.length}`));
+  }, 20000);
+});

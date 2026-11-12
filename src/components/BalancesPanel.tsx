@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useApp } from "../state/AppContext";
 import { computeBalances, pendingCents } from "../engine/balances";
 import { formatCents } from "../engine/money";
+import { personLabels } from "../lib/personLabels";
 
 export function BalancesPanel() {
   const { activeGroup } = useApp();
@@ -9,9 +10,10 @@ export function BalancesPanel() {
   const rows = useMemo(() => {
     if (!activeGroup) return [];
     const balances = computeBalances(activeGroup);
+    const labels = personLabels(activeGroup.people);
     return activeGroup.people.map((person) => ({
       id: person.id,
-      name: person.name,
+      name: labels.get(person.id),
       net: balances.get(person.id) ?? 0,
     }));
   }, [activeGroup]);

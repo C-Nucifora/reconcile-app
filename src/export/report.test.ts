@@ -42,6 +42,23 @@ function group(): Group {
 
 const ALL = { settleUp: true, expenses: true, perPerson: true };
 
+it("distinguishes supported duplicate names consistently throughout a report", () => {
+  const fixture = group();
+  fixture.people = [{ id: "a", name: "Alex" }, { id: "b", name: "Alex" }];
+  fixture.expenses = [{
+    id: "fictional-duplicate-names", description: "Fictional duplicate names",
+    date: "2026-11-12", amountCents: 100, payerId: "a", splitType: "exact",
+    members: [{ personId: "b", value: 100 }],
+  }];
+  const result = buildReport(fixture, { sections: ALL, generatedDate: "2026-11-12" });
+  const [payer, debtor] = result.perPerson!;
+  expect(payer.name).not.toBe(debtor.name);
+  expect(result.expenses![0].payerName).toBe(payer.name);
+  expect(result.settleUp!.transfers).toEqual([{ from: debtor.name, to: payer.name, cents: 100 }]);
+  expect(result.settleUp!.netBalances).toEqual([{ name: payer.name, cents: 100 }, { name: debtor.name, cents: -100 }]);
+  expect(fixture.people.map((person) => person.name)).toEqual(["Alex", "Alex"]);
+});
+
 describe("buildReport", () => {
   it("always includes a header with group name and the passed date", () => {
     const r = buildReport(group(), { sections: ALL, generatedDate: "2026-06-23" });

@@ -5,6 +5,9 @@ import ExpenseForm from "./ExpenseForm";
 import ExpenseList from "./ExpenseList";
 import SplitEditor from "./SplitEditor";
 import ItemsEditor from "./ItemsEditor";
+import PeopleManager from "./PeopleManager";
+import { BalancesPanel } from "./BalancesPanel";
+import { SettlePanel } from "./SettlePanel";
 
 const context = vi.hoisted(() => ({ activeGroup: null as Group | null, dispatch: vi.fn() }));
 vi.mock("../state/AppContext", () => ({ useApp: () => context }));
@@ -20,6 +23,41 @@ const expense: Expense = {
 beforeEach(() => {
   context.activeGroup = { id: "fictional-trip", name: "Fictional trip", people, expenses: [] };
   context.dispatch.mockClear();
+});
+
+describe("duplicate person attribution", () => {
+  beforeEach(() => {
+    context.activeGroup!.people = [{ id: "alex", name: "Alex" }, { id: "sam", name: "Alex" }];
+    context.activeGroup!.expenses = [{ ...expense, amountCents: 100, splitType: "exact", members: [{ personId: "sam", value: 100 }] }];
+  });
+
+  it("distinguishes payer options and split controls without changing identities", () => {
+    const html = renderToStaticMarkup(<ExpenseForm />);
+    expect(html).toContain('<option value="alex" selected="">Alex (1)</option>');
+    expect(html).toContain('<option value="sam">Alex (2)</option>');
+    const split = renderToStaticMarkup(<SplitEditor people={context.activeGroup!.people} amountCents={100}
+      value={{ splitType: "exact", members: [{ personId: "alex", value: 0 }, { personId: "sam", value: 100 }] }} onChange={() => {}} />);
+    expect(split).toContain('aria-label="Exact amount for Alex (1)"');
+    expect(split).toContain('aria-label="Exact amount for Alex (2)"');
+    expect(context.activeGroup!.people.map((person) => person.name)).toEqual(["Alex", "Alex"]);
+  });
+
+  it("uses the same identities in people chips items balances and settlement", () => {
+    const chips = renderToStaticMarkup(<PeopleManager />);
+    expect(chips).toContain('aria-label="Rename Alex (1)"');
+    expect(chips).toContain('aria-label="Rename Alex (2)"');
+    const items = renderToStaticMarkup(<ItemsEditor people={context.activeGroup!.people}
+      items={[{ id: "fictional-item", name: "Fictional meal", priceInput: "1.00", assigneeIds: ["sam"] }]} onChange={() => {}} />);
+    expect(items).toContain('aria-label="Assign Alex (1) to item 1"');
+    expect(items).toContain('aria-label="Assign Alex (2) to item 1"');
+    const balances = renderToStaticMarkup(<BalancesPanel />);
+    expect(balances).toContain("Alex (1)");
+    expect(balances).toContain("Alex (2)");
+    const settlement = renderToStaticMarkup(<SettlePanel />);
+    expect(settlement).toContain("Alex (2)");
+    expect(settlement).toContain("Alex (1)");
+    expect(context.dispatch).not.toHaveBeenCalled();
+  });
 });
 
 describe("expense editor rendering", () => {

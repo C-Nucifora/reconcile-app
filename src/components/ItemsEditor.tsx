@@ -2,6 +2,7 @@ import { useId, useMemo, useRef } from "react";
 import type { ID, Person } from "../types";
 import { formatCents, splitCents } from "../engine/money";
 import { emptyItemDraft, itemCents, type ItemDraft } from "./expenseValidation";
+import { personLabels } from "../lib/personLabels";
 
 interface ItemsEditorProps {
   people: Person[];
@@ -15,6 +16,7 @@ export default function ItemsEditor({
   onChange,
 }: ItemsEditorProps) {
   const editorId = useId();
+  const labels = useMemo(() => personLabels(people), [people]);
   const focusItem = useRef<ID | null>(null);
   const totals = useMemo(() => {
     let total = 0;
@@ -157,6 +159,7 @@ export default function ItemsEditor({
               {people.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {people.map((person) => {
+                    const label = labels.get(person.id);
                     const on = item.assigneeIds.includes(person.id);
                     const share = shareByPerson.get(person.id);
                     return (
@@ -165,7 +168,7 @@ export default function ItemsEditor({
                         type="button"
                         onClick={() => toggleAssignee(item, person.id)}
                         aria-pressed={on}
-                        aria-label={`Assign ${person.name} to item ${index + 1}`}
+                        aria-label={`Assign ${label} to item ${index + 1}`}
                         className={
                           "max-w-full [overflow-wrap:anywhere] rounded-full px-2.5 py-1 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent " +
                           (on
@@ -173,7 +176,7 @@ export default function ItemsEditor({
                             : "text-muted hover:bg-surface-2")
                         }
                       >
-                        {person.name}
+                        {label}
                         {on && share !== undefined && (
                           <span className="ml-1 tabular-nums opacity-80">
                             {formatCents(share)}
