@@ -50,8 +50,11 @@ const styles = StyleSheet.create({
   muted: { color: "#777" },
   bold: { fontWeight: 700 },
   expenseBlock: { marginBottom: 8 },
-  label: { flexGrow: 1, flexShrink: 1, minWidth: 0, paddingRight: 12 },
-  amount: { flexShrink: 0, width: 110, textAlign: "right" },
+  // Size View columns before measuring Text; react-pdf caches its first text layout.
+  label: { flexBasis: 0, flexGrow: 1, flexShrink: 1, minWidth: 0, paddingRight: 12 },
+  // At 10pt, DejaVu Sans Bold needs 146.9pt for net $-90071992547409.91.
+  amount: { flexShrink: 0, width: 150, textAlign: "right" },
+  metadata: { width: "100%", paddingRight: 12 },
   footer: { position: "absolute", bottom: 18, left: 36, right: 36, fontSize: 8, color: "#666", textAlign: "right" },
 });
 
@@ -73,18 +76,24 @@ export function ReconcilePdf({ data }: { data: ReportData }) {
               ) : (
                 data.settleUp.transfers.map((t, i) => (
                   <View style={styles.row} key={`t${i}`}>
-                    <Text style={styles.label}>
-                      {t.from} pays {t.to}
-                    </Text>
-                    <Text style={styles.amount}>{money(t.cents)}</Text>
+                    <View style={styles.label}>
+                      <Text>{t.from} pays {t.to}</Text>
+                    </View>
+                    <View style={styles.amount}>
+                      <Text>{money(t.cents)}</Text>
+                    </View>
                   </View>
                 ))
               )}
               <View style={{ marginTop: 6 }}>
                 {data.settleUp.netBalances.map((b, i) => (
                   <View style={styles.row} key={`b${i}`}>
-                    <Text style={[styles.muted, styles.label]}>{b.name}</Text>
-                    <Text style={[styles.muted, styles.amount]}>{money(b.cents)}</Text>
+                    <View style={styles.label}>
+                      <Text style={styles.muted}>{b.name}</Text>
+                    </View>
+                    <View style={styles.amount}>
+                      <Text style={styles.muted}>{money(b.cents)}</Text>
+                    </View>
                   </View>
                 ))}
               </View>
@@ -99,11 +108,15 @@ export function ReconcilePdf({ data }: { data: ReportData }) {
               {data.expenses.map((e, i) => (
                 <View style={styles.expenseBlock} key={`e${i}`}>
                   <View style={styles.row} minPresenceAhead={60}>
-                    <Text style={[styles.bold, styles.label]}>{e.description}</Text>
-                    <Text style={[styles.bold, styles.amount]}>{money(e.amountCents)}</Text>
+                    <View style={styles.label}>
+                      <Text style={styles.bold}>{e.description}</Text>
+                    </View>
+                    <View style={styles.amount}>
+                      <Text style={styles.bold}>{money(e.amountCents)}</Text>
+                    </View>
                   </View>
                   <View style={styles.row}>
-                    <Text style={styles.muted}>
+                    <Text style={[styles.muted, styles.metadata]}>
                       {e.date} · paid by {e.payerName} · {e.splitSummary}
                     </Text>
                   </View>
@@ -112,13 +125,17 @@ export function ReconcilePdf({ data }: { data: ReportData }) {
                   )}
                   {e.items?.map((it, j) => (
                     <View style={styles.itemRow} key={`e${i}i${j}`}>
-                      <Text style={[styles.muted, styles.label]}>
-                        {it.name}
-                        {it.assigneeNames.length > 0
-                          ? ` (${it.assigneeNames.join(", ")})`
-                          : " (pending)"}
-                      </Text>
-                      <Text style={[styles.muted, styles.amount]}>{money(it.cents)}</Text>
+                      <View style={styles.label}>
+                        <Text style={styles.muted}>
+                          {it.name}
+                          {it.assigneeNames.length > 0
+                            ? ` (${it.assigneeNames.join(", ")})`
+                            : " (pending)"}
+                        </Text>
+                      </View>
+                      <View style={styles.amount}>
+                        <Text style={styles.muted}>{money(it.cents)}</Text>
+                      </View>
                     </View>
                   ))}
                 </View>
@@ -134,18 +151,26 @@ export function ReconcilePdf({ data }: { data: ReportData }) {
               {data.perPerson.map((p, i) => (
                 <View style={styles.expenseBlock} key={`p${i}`}>
                   <View style={styles.row} minPresenceAhead={60}>
-                    <Text style={[styles.bold, styles.label]}>{p.name}</Text>
-                    <Text style={[styles.bold, styles.amount]}>net {money(p.netCents)}</Text>
+                    <View style={styles.label}>
+                      <Text style={styles.bold}>{p.name}</Text>
+                    </View>
+                    <View style={styles.amount}>
+                      <Text style={styles.bold}>net {money(p.netCents)}</Text>
+                    </View>
                   </View>
                   <View style={styles.row}>
-                    <Text style={styles.muted}>
+                    <Text style={[styles.muted, styles.metadata]}>
                       paid {money(p.paidCents)} · owed {money(p.owedCents)}
                     </Text>
                   </View>
                   {p.contributions.map((c, j) => (
                     <View style={styles.itemRow} key={`p${i}c${j}`}>
-                      <Text style={[styles.muted, styles.label]}>{c.description}</Text>
-                      <Text style={[styles.muted, styles.amount]}>{money(c.owedCents)}</Text>
+                      <View style={styles.label}>
+                        <Text style={styles.muted}>{c.description}</Text>
+                      </View>
+                      <View style={styles.amount}>
+                        <Text style={styles.muted}>{money(c.owedCents)}</Text>
+                      </View>
                     </View>
                   ))}
                 </View>
