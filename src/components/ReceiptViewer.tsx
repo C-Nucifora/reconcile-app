@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ID } from "../types";
 import { getImageURL } from "../lib/imageStore";
@@ -16,8 +16,9 @@ interface ReceiptViewerProps {
  */
 export default function ReceiptViewer({ imageId, onClose }: ReceiptViewerProps) {
   const closeRef = useRef<HTMLButtonElement>(null);
-  const [loaded, setLoaded] = useState<{ imageId: ID; url: string | null } | null>(null);
-  const current = loaded?.imageId === imageId ? loaded : null;
+  const request = useMemo(() => ({ imageId }), [imageId]);
+  const [loaded, setLoaded] = useState<{ request: typeof request; url: string | null } | null>(null);
+  const current = loaded?.request === request ? loaded : null;
   const url = current?.url;
   const status = current ? (url ? "ready" : "missing") : "loading";
 
@@ -34,14 +35,14 @@ export default function ReceiptViewer({ imageId, onClose }: ReceiptViewerProps) 
       if (result) {
         createdUrl = result;
       }
-      setLoaded({ imageId, url: result });
+      setLoaded({ request, url: result });
     });
 
     return () => {
       active = false;
       if (createdUrl) URL.revokeObjectURL(createdUrl);
     };
-  }, [imageId]);
+  }, [imageId, request]);
 
   // Close on Escape for keyboard users.
   useEffect(() => {
@@ -102,7 +103,7 @@ export default function ReceiptViewer({ imageId, onClose }: ReceiptViewerProps) 
               <img
                 src={url}
                 alt="Receipt"
-                onError={() => setLoaded({ imageId, url: null })}
+                onError={() => setLoaded({ request, url: null })}
                 className="max-h-[75vh] w-auto max-w-full rounded-lg object-contain"
               />
             )

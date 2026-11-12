@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ID } from "../types";
 import {
   compressImage,
@@ -35,8 +35,9 @@ export default function ReceiptUpload({ imageId, onChange, onBusyChange }: Recei
   }, [onBusyChange]);
   const inputRef = useRef<HTMLInputElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const [thumbnail, setThumbnail] = useState<{ imageId?: ID; url: string | null } | null>(null);
-  const thumbUrl = thumbnail?.imageId === imageId ? thumbnail?.url : null;
+  const request = useMemo(() => ({ imageId }), [imageId]);
+  const [thumbnail, setThumbnail] = useState<{ request: typeof request; url: string | null } | null>(null);
+  const thumbUrl = thumbnail?.request === request ? thumbnail?.url : null;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -55,7 +56,7 @@ export default function ReceiptUpload({ imageId, onChange, onBusyChange }: Recei
         return;
       }
       url = resolved;
-      setThumbnail({ imageId, url: resolved });
+      setThumbnail({ request, url: resolved });
       if (!resolved) setLightboxOpen(false);
     });
 
@@ -63,7 +64,7 @@ export default function ReceiptUpload({ imageId, onChange, onBusyChange }: Recei
       cancelled = true;
       if (url) URL.revokeObjectURL(url);
     };
-  }, [imageId]);
+  }, [imageId, request]);
 
   // Close the lightbox on Escape for keyboard users (parity with ReceiptViewer),
   // and move focus to the close button on open so keyboard users land inside it.
@@ -141,7 +142,7 @@ export default function ReceiptUpload({ imageId, onChange, onBusyChange }: Recei
                 src={thumbUrl}
                 alt="Receipt thumbnail"
                 onError={() => {
-                  setThumbnail({ imageId, url: null });
+                  setThumbnail({ request, url: null });
                   setLightboxOpen(false);
                 }}
                 className="h-16 w-16 object-cover"
@@ -149,7 +150,7 @@ export default function ReceiptUpload({ imageId, onChange, onBusyChange }: Recei
             </button>
           ) : (
             <p className="text-xs text-muted">
-              {thumbnail?.imageId === imageId ? "Receipt unavailable." : "Loading receipt…"}
+              {thumbnail?.request === request ? "Receipt unavailable." : "Loading receipt…"}
             </p>
           )}
           <div className="flex flex-col items-start gap-1">
@@ -220,7 +221,7 @@ export default function ReceiptUpload({ imageId, onChange, onBusyChange }: Recei
               src={thumbUrl}
               alt="Receipt"
               onError={() => {
-                setThumbnail({ imageId, url: null });
+                setThumbnail({ request, url: null });
                 setLightboxOpen(false);
               }}
               className="max-h-[85vh] max-w-[90vw] rounded-lg object-contain shadow-sm"
