@@ -276,9 +276,49 @@ export function validateState(raw: unknown): AppState {
   return state;
 }
 
+function assertNoRoundedFractions(raw: string): void {
+  const numbers = /-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/y;
+  for (let at = 0; at < raw.length; at++) {
+    // JSON syntax is already valid. Skip whole strings, including escaped quotes/backslashes.
+    if (raw[at] === '"') {
+      while (raw[++at] !== '"') {
+        if (raw[at] === "\\") at++;
+      }
+      continue;
+    }
+    if (raw[at] !== "-" && (raw[at] < "0" || raw[at] > "9")) continue;
+    numbers.lastIndex = at;
+    const token = numbers.exec(raw)![0];
+    at = numbers.lastIndex - 1;
+    if (!Number.isInteger(Number(token))) continue;
+    const exponentAt = token.search(/[eE]/);
+    const coefficientEnd = exponentAt < 0 ? token.length : exponentAt;
+    // Overflow to signed Infinity is safe: the digit-count threshold is bounded by raw.length.
+    const exponent = exponentAt < 0 ? 0 : Number(token.slice(exponentAt + 1));
+    const decimalAt = token.indexOf(".");
+    const fractionalDigits = decimalAt < 0 ? 0 : coefficientEnd - decimalAt - 1;
+    let trailingZeros = 0;
+    let nonzero = false;
+    for (let i = token[0] === "-" ? 1 : 0; i < coefficientEnd; i++) {
+      if (token[i] === ".") continue;
+      if (token[i] === "0") trailingZeros++;
+      else {
+        nonzero = true;
+        trailingZeros = 0;
+      }
+    }
+    // Trailing zeros cancel fractional places. This also protects weights rounded to whole Numbers.
+    if (nonzero && exponent < fractionalDigits - trailingZeros) {
+      throw new Error("Saved data contains unsupported fractional precision. The original has been preserved. Recover a copy before editing.");
+    }
+  }
+}
+
 function parseStoredState(raw: string): AppState {
   if (raw.length > MAX_STORED_CHARS) throw new Error("Saved data exceeds the supported storage size.");
-  return validateState(JSON.parse(raw));
+  const parsed: unknown = JSON.parse(raw);
+  assertNoRoundedFractions(raw);
+  return validateState(parsed);
 }
 
 export function loadStoredState(): StoredState {
