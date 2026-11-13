@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { Expense, Person } from "../types";
 import { useApp } from "../state/AppContext";
 import { formatCents } from "../engine/money";
@@ -6,9 +6,9 @@ import {
   expenseTotalCents,
   pendingCents,
 } from "../engine/balances";
-import { deleteImage } from "../lib/imageStore";
 import ExpenseForm from "./ExpenseForm";
 import ReceiptViewer from "./ReceiptViewer";
+import { personLabels } from "../lib/personLabels";
 
 const SPLIT_LABEL: Record<Expense["splitType"], string> = {
   equal: "split equally",
@@ -40,13 +40,12 @@ export default function ExpenseList() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [viewingReceiptId, setViewingReceiptId] = useState<string | null>(null);
 
-  const people: Person[] = activeGroup?.people ?? [];
+  const people: Person[] = useMemo(() => activeGroup?.people ?? [], [activeGroup?.people]);
+  const restoreEditFocus = useRef<string | null>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const focusEmpty = useRef(false);
 
-  const nameById = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const p of people) map.set(p.id, p.name);
-    return map;
-  }, [people]);
+  const nameById = useMemo(() => personLabels(people), [people]);
 
   // Newest first: by date descending, then by insertion order descending.
   const ordered = useMemo(() => {
@@ -67,11 +66,8 @@ export default function ExpenseList() {
   }
 
   function handleDelete(expense: Expense) {
-    // Best-effort cleanup of the receipt blob; the reducer stays pure, so the
-    // IndexedDB side effect lives here. deleteImage never throws.
-    if (expense.receiptImageId) {
-      void deleteImage(expense.receiptImageId);
-    }
+    focusEmpty.current = activeGroup!.expenses.length === 1;
+    listRef.current?.focus();
     if (viewingReceiptId === expense.id) setViewingReceiptId(null);
     dispatch({
       type: "DELETE_EXPENSE",
@@ -82,7 +78,16 @@ export default function ExpenseList() {
 
   if (ordered.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-line bg-surface p-8 text-center">
+      <div
+        tabIndex={-1}
+        ref={(node) => {
+          if (node && focusEmpty.current) {
+            focusEmpty.current = false;
+            node.focus();
+          }
+        }}
+        className="rounded-xl border border-dashed border-line bg-surface p-8 text-center focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      >
         <p className="text-sm font-medium text-fg">No expenses yet</p>
         <p className="mt-1 text-sm text-muted">
           Add your first expense above to start tracking.
@@ -93,7 +98,7 @@ export default function ExpenseList() {
 
   return (
     <>
-      <ul className="space-y-3">
+      <ul ref={listRef} tabIndex={-1} aria-label="Expenses" className="space-y-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-xl">
         {ordered.map((expense) => {
           const payerName = nameById.get(expense.payerId) ?? "Unknown";
           const isEditing = editingId === expense.id;
@@ -103,7 +108,10 @@ export default function ExpenseList() {
               <li key={expense.id}>
                 <ExpenseForm
                   editingExpense={expense}
-                  onDone={() => setEditingId(null)}
+                  onDone={() => {
+                    restoreEditFocus.current = expense.id;
+                    setEditingId(null);
+                  }}
                 />
               </li>
             );
@@ -125,15 +133,15 @@ export default function ExpenseList() {
                     <button
                       type="button"
                       onClick={() => setViewingReceiptId(expense.id)}
-                      aria-label="View receipt"
+                      aria-label={`View receipt for ${expense.description}`}
                       title="View receipt"
-                      className="shrink-0 rounded-md p-1 text-muted hover:bg-surface-2 hover:text-fg"
+                      className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent shrink-0 rounded-md p-1 text-muted hover:bg-surface-2 hover:text-fg"
                     >
                       <PaperclipIcon />
                     </button>
                   )}
                 </div>
-                <p className="mt-0.5 text-xs text-muted">
+                <p className="mt-0.5 [overflow-wrap:anywhere] text-xs text-muted">
                   {payerName} paid · {expense.date} ·{" "}
                   {splitSummary(expense, nameById)}
                 </p>
@@ -154,15 +162,23 @@ export default function ExpenseList() {
               <div className="flex shrink-0 items-center gap-1">
                 <button
                   type="button"
+                  ref={(node) => {
+                    if (node && restoreEditFocus.current === expense.id) {
+                      restoreEditFocus.current = null;
+                      node.focus();
+                    }
+                  }}
+                  aria-label={`Edit ${expense.description}`}
                   onClick={() => setEditingId(expense.id)}
-                  className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted hover:bg-surface-2 hover:text-fg"
+                  className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted hover:bg-surface-2 hover:text-fg"
                 >
                   Edit
                 </button>
                 <button
                   type="button"
+                  aria-label={`Delete ${expense.description}`}
                   onClick={() => handleDelete(expense)}
-                  className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-negative hover:bg-negative-soft"
+                  className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-lg px-2.5 py-1.5 text-xs font-medium text-negative hover:bg-negative-soft"
                 >
                   Delete
                 </button>

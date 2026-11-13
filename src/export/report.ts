@@ -6,6 +6,7 @@ import {
   expenseTotalCents,
 } from "../engine/balances";
 import { settle } from "../engine/settle";
+import { personLabels } from "../lib/personLabels";
 
 export interface ReportSections {
   settleUp: boolean;
@@ -24,6 +25,7 @@ export interface ReportData {
     date: string;
     payerName: string;
     amountCents: number;
+    pendingCents?: number;
     splitSummary: string;
     items?: { name: string; cents: number; assigneeNames: string[] }[];
   }[];
@@ -54,7 +56,7 @@ export function buildReport(
   group: Group,
   opts: { sections: ReportSections; generatedDate: string },
 ): ReportData {
-  const nameOf = new Map<ID, string>(group.people.map((p) => [p.id, p.name]));
+  const nameOf = personLabels(group.people);
   const name = (id: ID): string => nameOf.get(id) ?? "Unknown";
 
   const data: ReportData = {
@@ -65,7 +67,7 @@ export function buildReport(
     const balances = computeBalances(group);
     data.settleUp = {
       netBalances: group.people.map((p) => ({
-        name: p.name,
+        name: name(p.id),
         cents: balances.get(p.id) ?? 0,
       })),
       transfers: settle(balances).map((t) => ({
@@ -84,6 +86,7 @@ export function buildReport(
         date: e.date,
         payerName: name(e.payerId),
         amountCents: expenseTotalCents(e),
+        pendingCents: expenseTotalCents(e) - payerCredit(e),
         splitSummary: splitSummary(e),
         items: itemized
           ? e.items!.map((it) => ({
@@ -110,7 +113,7 @@ export function buildReport(
         }
       }
       return {
-        name: p.name,
+        name: name(p.id),
         paidCents,
         owedCents,
         netCents: paidCents - owedCents,

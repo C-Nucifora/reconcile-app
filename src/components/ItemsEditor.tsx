@@ -1,17 +1,8 @@
-import { useMemo } from "react";
+import { useId, useMemo, useRef } from "react";
 import type { ID, Person } from "../types";
-import { formatCents, parseAmountToCents, splitCents } from "../engine/money";
-import { newId } from "../lib/id";
-
-// A single editable row. priceInput is the raw text the user types; the parsed
-// cents value is derived for totals/validity. assigneeIds split the item
-// equally — an empty array means the row is pending (unallocated).
-export interface ItemDraft {
-  id: ID;
-  name: string;
-  priceInput: string;
-  assigneeIds: ID[];
-}
+import { formatCents, splitCents } from "../engine/money";
+import { emptyItemDraft, itemCents, type ItemDraft } from "./expenseValidation";
+import { personLabels } from "../lib/personLabels";
 
 interface ItemsEditorProps {
   people: Person[];
@@ -19,44 +10,14 @@ interface ItemsEditorProps {
   onChange: (items: ItemDraft[]) => void;
 }
 
-export function emptyItemDraft(): ItemDraft {
-  return { id: newId(), name: "", priceInput: "", assigneeIds: [] };
-}
-
-/** Cents for a single draft row, or null when the price is blank/invalid. */
-export function itemCents(item: ItemDraft): number | null {
-  if (item.priceInput.trim() === "") return null;
-  return parseAmountToCents(item.priceInput);
-}
-
-/**
- * Whether the set of item drafts is valid to save: at least one row has a
- * non-empty name and a positive, parseable price, and no row carries a
- * name/price that fails to parse. A pending (unassigned) row is allowed.
- */
-export function areItemsValid(items: ItemDraft[]): boolean {
-  let hasOneGood = false;
-  for (const item of items) {
-    const name = item.name.trim();
-    const priceText = item.priceInput.trim();
-    const cents = itemCents(item);
-
-    // A row with text in either field must parse to a positive priced, named
-    // line; a fully-blank row is simply ignored.
-    const blank = name === "" && priceText === "";
-    if (blank) continue;
-
-    if (name === "" || cents === null || cents <= 0) return false;
-    hasOneGood = true;
-  }
-  return hasOneGood;
-}
-
 export default function ItemsEditor({
   people,
   items,
   onChange,
 }: ItemsEditorProps) {
+  const editorId = useId();
+  const labels = useMemo(() => personLabels(people), [people]);
+  const focusItem = useRef<ID | null>(null);
   const totals = useMemo(() => {
     let total = 0;
     let pending = 0;
@@ -78,12 +39,17 @@ export default function ItemsEditor({
   }
 
   function addRow() {
-    onChange([...items, emptyItemDraft()]);
+    const item = emptyItemDraft();
+    focusItem.current = item.id;
+    onChange([...items, item]);
   }
 
   function removeRow(id: ID) {
+    const index = items.findIndex((item) => item.id === id);
     const next = items.filter((it) => it.id !== id);
-    onChange(next.length > 0 ? next : [emptyItemDraft()]);
+    if (next.length === 0) next.push(emptyItemDraft());
+    focusItem.current = next[Math.min(index, next.length - 1)].id;
+    onChange(next);
   }
 
   function toggleAssignee(item: ItemDraft, personId: ID) {
@@ -96,11 +62,14 @@ export default function ItemsEditor({
 
   return (
     <div className="space-y-3">
-      <ul className="space-y-3">
-        {items.map((item) => {
+      <ul aria-label="Expense items" className="space-y-3">
+        {items.map((item, index) => {
           const cents = itemCents(item);
           const valid = cents !== null && cents > 0;
-          const priceInvalid = item.priceInput.trim() !== "" && !valid;
+          const filled = item.name.trim() !== "" || item.priceInput.trim() !== "";
+          const nameInvalid = filled && item.name.trim() === "";
+          const priceInvalid = filled && !valid;
+          const errorId = `${editorId}-${item.id}-error`;
           const pending = item.assigneeIds.length === 0;
 
           // Per-person preview of an equal split for this row.
@@ -129,10 +98,18 @@ export default function ItemsEditor({
               <div className="flex items-start gap-2">
                 <input
                   type="text"
+                  ref={(node) => {
+                    if (node && focusItem.current === item.id) {
+                      focusItem.current = null;
+                      node.focus();
+                    }
+                  }}
                   value={item.name}
                   onChange={(e) => updateRow(item.id, { name: e.target.value })}
                   placeholder="Item name"
-                  aria-label="Item name"
+                  aria-label={`Item ${index + 1} name`}
+                  aria-invalid={nameInvalid}
+                  aria-describedby={nameInvalid ? errorId : undefined}
                   className="min-w-0 flex-1 rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent"
                 />
                 <div className="flex items-center gap-1">
@@ -145,8 +122,9 @@ export default function ItemsEditor({
                       updateRow(item.id, { priceInput: e.target.value })
                     }
                     placeholder="0.00"
-                    aria-label="Item price"
+                    aria-label={`Item ${index + 1} price`}
                     aria-invalid={priceInvalid}
+                    aria-describedby={priceInvalid ? errorId : undefined}
                     className={
                       "w-24 rounded-lg border bg-surface px-3 py-2 text-right text-sm tabular-nums text-fg placeholder:text-muted focus:outline-none focus:ring-2 " +
                       (priceInvalid
@@ -158,9 +136,9 @@ export default function ItemsEditor({
                 <button
                   type="button"
                   onClick={() => removeRow(item.id)}
-                  aria-label="Remove item"
+                  aria-label={`Remove item ${index + 1}`}
                   title="Remove item"
-                  className="shrink-0 rounded-lg p-2 text-muted transition hover:bg-surface-2 hover:text-negative"
+                  className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent shrink-0 rounded-lg p-2 text-muted transition hover:bg-surface-2 hover:text-negative"
                 >
                   <svg
                     viewBox="0 0 20 20"
@@ -181,6 +159,7 @@ export default function ItemsEditor({
               {people.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {people.map((person) => {
+                    const label = labels.get(person.id);
                     const on = item.assigneeIds.includes(person.id);
                     const share = shareByPerson.get(person.id);
                     return (
@@ -189,14 +168,15 @@ export default function ItemsEditor({
                         type="button"
                         onClick={() => toggleAssignee(item, person.id)}
                         aria-pressed={on}
+                        aria-label={`Assign ${label} to item ${index + 1}`}
                         className={
-                          "rounded-full px-2.5 py-1 text-xs font-medium transition " +
+                          "max-w-full [overflow-wrap:anywhere] rounded-full px-2.5 py-1 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent " +
                           (on
                             ? "bg-accent text-accent-fg"
                             : "text-muted hover:bg-surface-2")
                         }
                       >
-                        {person.name}
+                        {label}
                         {on && share !== undefined && (
                           <span className="ml-1 tabular-nums opacity-80">
                             {formatCents(share)}
@@ -210,7 +190,12 @@ export default function ItemsEditor({
 
               {pending && (item.name.trim() !== "" || valid) && (
                 <p className="mt-2 text-xs font-medium text-warning">
-                  Pending — tap people to split this item.
+                  Pending. Select people to split this item.
+                </p>
+              )}
+              {(nameInvalid || priceInvalid) && (
+                <p id={errorId} role="status" className="mt-2 text-xs text-negative">
+                  Enter an item name and a valid price greater than zero.
                 </p>
               )}
             </li>
@@ -221,7 +206,7 @@ export default function ItemsEditor({
       <button
         type="button"
         onClick={addRow}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-2 text-sm font-medium text-fg transition hover:bg-surface-2"
+        className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-2 text-sm font-medium text-fg transition hover:bg-surface-2"
       >
         <svg
           viewBox="0 0 20 20"
@@ -243,14 +228,14 @@ export default function ItemsEditor({
         <span className="text-muted">
           Total
           <span className="ml-2 font-semibold tabular-nums text-fg">
-            ${formatCents(totals.total)}
+            {Number.isSafeInteger(totals.total) ? `$${formatCents(totals.total)}` : "Total is too large"}
           </span>
         </span>
         {totals.pending > 0 && (
           <span className="text-warning">
             Pending: ${" "}
             <span className="font-semibold tabular-nums">
-              {formatCents(totals.pending)}
+              {Number.isSafeInteger(totals.pending) ? formatCents(totals.pending) : "Amount is too large"}
             </span>{" "}
             ({totals.pendingCount}{" "}
             {totals.pendingCount === 1 ? "item" : "items"})

@@ -5,6 +5,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { resolveTheme, THEME_KEY, type ThemeChoice } from "./theme";
 
@@ -41,6 +42,16 @@ function systemPrefersDark(): boolean {
   }
 }
 
+function subscribeSystemPreference(onChange: () => void): () => void {
+  try {
+    const mql = window.matchMedia(DARK_QUERY);
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  } catch {
+    return () => {};
+  }
+}
+
 function applyDarkClass(resolved: "light" | "dark"): void {
   const root = document.documentElement;
   if (resolved === "dark") {
@@ -54,8 +65,10 @@ export function ThemeProvider(props: {
   children: React.ReactNode;
 }): React.JSX.Element {
   const [theme, setThemeState] = useState<ThemeChoice>(() => readStoredChoice());
-  const [prefersDark, setPrefersDark] = useState<boolean>(() =>
-    systemPrefersDark()
+  const prefersDark = useSyncExternalStore(
+    subscribeSystemPreference,
+    systemPrefersDark,
+    () => false,
   );
 
   const resolvedTheme = resolveTheme(theme, prefersDark);
@@ -73,24 +86,6 @@ export function ThemeProvider(props: {
       // Persisting is best-effort; ignore storage failures.
     }
   }, [theme]);
-
-  // Subscribe to system preference changes (always tracked; only affects the
-  // resolved theme while choice is "system").
-  useEffect(() => {
-    let mql: MediaQueryList;
-    try {
-      mql = window.matchMedia(DARK_QUERY);
-    } catch {
-      return;
-    }
-    const onChange = (event: MediaQueryListEvent) => {
-      setPrefersDark(event.matches);
-    };
-    // Initial value is read lazily in useState above; the listener keeps it in
-    // sync from here on.
-    mql.addEventListener("change", onChange);
-    return () => mql.removeEventListener("change", onChange);
-  }, []);
 
   const setTheme = useCallback((c: ThemeChoice) => {
     setThemeState(c);

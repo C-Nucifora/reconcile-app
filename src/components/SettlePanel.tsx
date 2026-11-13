@@ -3,17 +3,15 @@ import { useApp } from "../state/AppContext";
 import { computeBalances } from "../engine/balances";
 import { settle } from "../engine/settle";
 import { formatCents } from "../engine/money";
+import { personLabels } from "../lib/personLabels";
 
 export function SettlePanel() {
   const { activeGroup } = useApp();
 
-  const nameOf = useMemo(() => {
-    const map = new Map<string, string>();
-    if (activeGroup) {
-      for (const person of activeGroup.people) map.set(person.id, person.name);
-    }
-    return map;
-  }, [activeGroup]);
+  const nameOf = useMemo(
+    () => personLabels(activeGroup?.people ?? []),
+    [activeGroup?.people],
+  );
 
   const transfers = useMemo(() => {
     if (!activeGroup) return [];
@@ -44,7 +42,7 @@ export function SettlePanel() {
               key={`${transfer.fromId}-${transfer.toId}-${index}`}
               className="flex items-center justify-between gap-4 rounded-lg bg-surface-2 px-4 py-2.5 text-sm"
             >
-              <span className="text-muted">
+              <span className="min-w-0 flex-1 [overflow-wrap:anywhere] text-muted">
                 <span className="font-medium text-fg">
                   {nameOf.get(transfer.fromId) ?? "Unknown"}
                 </span>{" "}
@@ -53,7 +51,7 @@ export function SettlePanel() {
                   {nameOf.get(transfer.toId) ?? "Unknown"}
                 </span>
               </span>
-              <span className="font-semibold tabular-nums text-fg">
+              <span className="min-w-0 [overflow-wrap:anywhere] text-right font-semibold tabular-nums text-fg">
                 {formatCents(transfer.amountCents)}
               </span>
             </li>

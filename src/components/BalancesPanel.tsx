@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useApp } from "../state/AppContext";
 import { computeBalances, pendingCents } from "../engine/balances";
 import { formatCents } from "../engine/money";
+import { personLabels } from "../lib/personLabels";
 
 export function BalancesPanel() {
   const { activeGroup } = useApp();
@@ -9,9 +10,10 @@ export function BalancesPanel() {
   const rows = useMemo(() => {
     if (!activeGroup) return [];
     const balances = computeBalances(activeGroup);
+    const labels = personLabels(activeGroup.people);
     return activeGroup.people.map((person) => ({
       id: person.id,
-      name: person.name,
+      name: labels.get(person.id),
       net: balances.get(person.id) ?? 0,
     }));
   }, [activeGroup]);
@@ -66,13 +68,13 @@ export function BalancesPanel() {
                   key={row.id}
                   className="flex items-center justify-between gap-4 py-2.5"
                 >
-                  <span className="font-medium text-fg">{row.name}</span>
+                  <span className="min-w-0 flex-1 [overflow-wrap:anywhere] font-medium text-fg">{row.name}</span>
                   {isOwed ? (
-                    <span className="text-sm font-semibold tabular-nums text-positive">
+                    <span className="min-w-0 [overflow-wrap:anywhere] text-right text-sm font-semibold tabular-nums text-positive">
                       is owed {formatCents(row.net)}
                     </span>
                   ) : owes ? (
-                    <span className="text-sm font-semibold tabular-nums text-negative">
+                    <span className="min-w-0 [overflow-wrap:anywhere] text-right text-sm font-semibold tabular-nums text-negative">
                       owes {formatCents(-row.net)}
                     </span>
                   ) : (

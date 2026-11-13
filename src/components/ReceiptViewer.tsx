@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ID } from "../types";
 import { getImageURL } from "../lib/imageStore";
@@ -15,10 +15,12 @@ interface ReceiptViewerProps {
  * renders nothing.
  */
 export default function ReceiptViewer({ imageId, onClose }: ReceiptViewerProps) {
-  const [url, setUrl] = useState<string | null>(null);
-  const [status, setStatus] = useState<"loading" | "ready" | "missing">(
-    "loading",
-  );
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const request = useMemo(() => ({ imageId }), [imageId]);
+  const [loaded, setLoaded] = useState<{ request: typeof request; url: string | null } | null>(null);
+  const current = loaded?.request === request ? loaded : null;
+  const url = current?.url;
+  const status = current ? (url ? "ready" : "missing") : "loading";
 
   useEffect(() => {
     let active = true;
@@ -32,26 +34,26 @@ export default function ReceiptViewer({ imageId, onClose }: ReceiptViewerProps) 
       }
       if (result) {
         createdUrl = result;
-        setUrl(result);
-        setStatus("ready");
-      } else {
-        setStatus("missing");
       }
+      setLoaded({ request, url: result });
     });
 
     return () => {
       active = false;
       if (createdUrl) URL.revokeObjectURL(createdUrl);
     };
-  }, [imageId]);
+  }, [imageId, request]);
 
   // Close on Escape for keyboard users.
   useEffect(() => {
+    const previousFocus = document.activeElement as HTMLElement | null;
+    closeRef.current?.focus();
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") { e.stopPropagation(); onClose(); }
+      if (e.key === "Tab") { e.preventDefault(); closeRef.current?.focus(); }
     }
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => { window.removeEventListener("keydown", onKey); previousFocus?.focus(); };
   }, [onClose]);
 
   // A missing image has nothing to show — close out so the caller forgets it.
@@ -71,6 +73,7 @@ export default function ReceiptViewer({ imageId, onClose }: ReceiptViewerProps) 
       {/* Backdrop */}
       <button
         type="button"
+        tabIndex={-1}
         aria-label="Close receipt"
         onClick={onClose}
         className="absolute inset-0 bg-fg/60 motion-safe:transition-opacity"
@@ -83,6 +86,7 @@ export default function ReceiptViewer({ imageId, onClose }: ReceiptViewerProps) 
             Receipt
           </span>
           <button
+            ref={closeRef}
             type="button"
             onClick={onClose}
             className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted hover:bg-surface-2"
@@ -99,6 +103,7 @@ export default function ReceiptViewer({ imageId, onClose }: ReceiptViewerProps) 
               <img
                 src={url}
                 alt="Receipt"
+                onError={() => setLoaded({ request, url: null })}
                 className="max-h-[75vh] w-auto max-w-full rounded-lg object-contain"
               />
             )

@@ -15,7 +15,7 @@
             window.matchMedia("(prefers-color-scheme: dark)").matches;
           var dark =
             choice === "dark" ||
-            ((choice === "system" || choice === null) && prefersDark);
+            ((choice !== "light" && choice !== "dark") && prefersDark);
           var root = document.documentElement;
           if (dark) {
             root.classList.add("dark");

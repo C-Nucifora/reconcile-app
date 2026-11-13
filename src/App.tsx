@@ -24,7 +24,7 @@ function Workspace() {
               Reconcile
             </h1>
             <p className="mt-1 text-sm text-muted">
-              Track shared expenses and settle up with the fewest payments.
+              Track shared expenses and work out who owes whom.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -32,7 +32,7 @@ function Workspace() {
               type="button"
               onClick={() => setExportOpen(true)}
               disabled={!canExport}
-              className="rounded-lg border border-line bg-surface px-3 py-2 text-sm font-medium text-fg transition hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
+              className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-lg border border-line bg-surface px-3 py-2 text-sm font-medium text-fg transition hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Export PDF
             </button>
@@ -45,7 +45,7 @@ function Workspace() {
         </div>
 
         {activeGroup ? (
-          <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-5">
+          <div key={activeGroup.id} className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-5">
             <div className="space-y-6 lg:col-span-3">
               <PeopleManager />
               <ExpenseForm />
@@ -60,7 +60,7 @@ function Workspace() {
       </div>
 
       {exportOpen && activeGroup && (
-        <ExportModal group={activeGroup} onClose={() => setExportOpen(false)} />
+        <ExportModal key={activeGroup.id} group={activeGroup} onClose={() => setExportOpen(false)} />
       )}
     </div>
   );

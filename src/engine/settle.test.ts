@@ -29,12 +29,8 @@ describe("settle", () => {
     expect(settle(balances)).toEqual([]);
   });
 
-  it("ignores sub-cent residuals", () => {
-    const balances = new Map<ID, number>([
-      ["A", 0],
-      ["B", 0],
-    ]);
-    expect(settle(balances)).toEqual([]);
+  it("rejects sub-cent residuals", () => {
+    expect(() => settle(new Map([["A", 0.1], ["B", -0.1]]))).toThrow(RangeError);
   });
 
   it("never emits a self-transfer", () => {
@@ -98,5 +94,49 @@ describe("settle", () => {
     const after = applyTransfers(balances, transfers);
     for (const v of after.values()) expect(v).toBe(0);
     expect(transfers.length).toBeLessThanOrEqual(balances.size - 1);
+  });
+});
+
+describe("settlement boundaries", () => {
+  it("settles totals exceeding the number range when each balance is safe", () => {
+    const maximum = Number.MAX_SAFE_INTEGER;
+    const balances = new Map([["A", maximum], ["B", maximum], ["C", -maximum], ["D", -maximum]]);
+    const before = new Map(balances);
+    expect([...applyTransfers(balances, settle(balances)).values()]).toEqual([0, 0, 0, 0]);
+    expect(settle(balances)).toEqual(settle(new Map([...balances].reverse())));
+    expect(balances).toEqual(before);
+    // A number sum rounds this one-cent imbalance to zero in this order.
+    expect(() => settle(new Map([["A", maximum], ["B", 2], ["C", -maximum], ["D", -1]]))).toThrow(RangeError);
+  });
+
+  it("is greedy without promising the minimum transfer count", () => {
+    const balances = new Map([["A", -8], ["B", -5], ["C", -5], ["D", 10], ["E", 8]]);
+    const transfers = settle(balances);
+    expect(transfers).toHaveLength(4);
+    expect([...applyTransfers(balances, transfers).values()]).toEqual([0, 0, 0, 0, 0]);
+    expect([...applyTransfers(balances, [
+      { fromId: "A", toId: "E", amountCents: 8 },
+      { fromId: "B", toId: "D", amountCents: 5 },
+      { fromId: "C", toId: "D", amountCents: 5 },
+    ]).values()]).toEqual([0, 0, 0, 0, 0]);
+  });
+
+  it("rejects malformed and unbalanced balances rather than returning a partial plan", () => {
+    for (const value of [NaN, Infinity, -Infinity, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(() => settle(new Map([["A", value], ["B", -value]]))).toThrow(RangeError);
+    }
+    expect(() => settle(new Map([["A", 100], ["B", -99]]))).toThrow(RangeError);
+  });
+
+  it("breaks magnitude ties by ID independently of insertion order", () => {
+    const balances = new Map([["D", 100], ["B", -100], ["C", 100], ["A", -100]]);
+    expect(settle(balances)).toEqual(settle(new Map([...balances].reverse())));
+    expect(settle(balances)[0]).toEqual({ fromId: "A", toId: "C", amountCents: 100 });
+  });
+
+  it("clears safe integer limits without changing the original map", () => {
+    const balances = new Map([["A", Number.MAX_SAFE_INTEGER], ["B", -Number.MAX_SAFE_INTEGER]]);
+    expect([...applyTransfers(balances, settle(balances)).values()]).toEqual([0, 0]);
+    expect(balances.get("A")).toBe(Number.MAX_SAFE_INTEGER);
   });
 });
